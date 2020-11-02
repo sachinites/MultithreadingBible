@@ -123,9 +123,9 @@ monitor_request_access_permission(
 			printf("Multiple Readers : Monitor %s resource available, "
 					"Thread %s granted Access\n",
 			monitor->name, requester_thread->name);	
-			monitor_unlock_monitor_talk_mutex(monitor);
 			glthread_add_next(&monitor->resource_using_threads_q, 
 				&requester_thread->wait_glue);	
+			monitor_unlock_monitor_talk_mutex(monitor);
 			return;
 		}
 
@@ -193,17 +193,20 @@ monitor_inform_resource_released(
 		}
 	}
 	else {
-
+		/* One or more Reader threads are waiting */
+		while(!IS_GLTHREAD_LIST_EMPTY(&monitor->reader_thread_wait_q)) {
+			printf("Awakening all Readers\n");
 			/*  Some Reader thread is Waiting */
 			next_accessor_thread_glue = dequeue_glthread_first(
-				&monitor->reader_thread_wait_q);
+					&monitor->reader_thread_wait_q);
 			next_accessor_thread =  wait_glue_to_thread(next_accessor_thread_glue);
 			printf("Monitor %s Picks up next Reader Thread %s for Resource Access\n",
-				monitor->name, next_accessor_thread->name);
+					monitor->name, next_accessor_thread->name);
 			monitor->resource_status = MON_RES_BUSY_BY_READER;
 			pthread_cond_signal(&next_accessor_thread->cond_var);
-			monitor_unlock_monitor_talk_mutex(monitor);
-			return;
+		}
+		monitor_unlock_monitor_talk_mutex(monitor);
+		return;
 	}
 }
 
