@@ -1,0 +1,7 @@
+Thread/Process sync :
+= == = = ==  = 
+1. Master Slave
+2. Wait for event, and then procees on being notified
+3. Map-Reduce model
+4. Asynchronous sync (like ARP resolution in TCP/IP Project)
+5. Synchronized communication
