@@ -56,7 +56,9 @@ thread1_create() {
  	 * local variables Or stack Memory*/	
 	static char *thread_input1 = "I am thread no 1";
 
-	/* Return 0 on success, otherwise returns errorcode */
+	/* Return 0 on success, otherwise returns errorcode, all
+ 	 * pthread functions return -ve error code on failure, they
+ 	 * do not set global 'errno' variable */
 	int rc = pthread_create(&pthread1, 
 				   NULL, 
 				   thread_fn_callback,
