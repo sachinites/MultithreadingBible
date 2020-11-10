@@ -59,11 +59,15 @@ pthread_t pthread3;
 void
 thread1_create(pthread_t *pthread_handle, int th_id) {
 
+	pthread_attr_t attr;
+	
 	int *_th_id = calloc(1, sizeof(int));
 	*_th_id = th_id;
 
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE /* PTHREAD_CREATE_DETACHED  */);
+	
 	int rc = pthread_create(pthread_handle, 
-				   NULL, 
+				   &attr,
 				   thread_fn_callback,
 				   (void *)_th_id);
 	if(rc != 0) {
