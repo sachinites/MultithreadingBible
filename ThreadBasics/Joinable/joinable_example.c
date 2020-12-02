@@ -53,17 +53,15 @@ thread_fn_callback(void *arg) {
 }
 
 
-pthread_t pthread2;
-pthread_t pthread3;
-
 void
-thread1_create(pthread_t *pthread_handle, int th_id) {
+thread_create(pthread_t *pthread_handle, int th_id) {
 
 	pthread_attr_t attr;
 	
 	int *_th_id = calloc(1, sizeof(int));
 	*_th_id = th_id;
 
+	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE /* PTHREAD_CREATE_DETACHED  */);
 	
 	int rc = pthread_create(pthread_handle, 
@@ -77,15 +75,18 @@ thread1_create(pthread_t *pthread_handle, int th_id) {
 	}
 }
 
+pthread_t pthread2;
+pthread_t pthread3;
+
 int
 main(int argc, char **argv){
 
 	void *thread_result2 = NULL;
 	void *thread_result3 = NULL;
 
-	thread1_create(&pthread2, 2);
+	thread_create(&pthread2, 2);
 	
-	thread1_create(&pthread3, 10);
+	thread_create(&pthread3, 10);
 
 	printf("main fn blocked on pthread join for thread with th_id = 2\n");
 	pthread_join(pthread2, &thread_result2);
