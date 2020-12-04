@@ -49,10 +49,12 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
                     char *oif){
 
 	bool new_entry;
+	bool rt_entry_has_data;
     rt_entry_t *head = NULL;
-    rt_entry_t *rt_entry = NULL;
-	
+    rt_entry_t *rt_entry = NULL;	
 	new_entry = false;
+
+	rt_entry_has_data = false;
 
 	rt_entry = rt_look_up_rt_entry(rt_table, dest, mask);
 
@@ -65,13 +67,18 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
     	rt_entry->rt_entry_keys.mask = mask;
 		
 		rt_entry->nfc = nfc_create_new_notif_chain(0);
-		new_entry = true;
+		rt_entry->created = false;
 	}
 
     if(gw_ip)
         strncpy(rt_entry->gw_ip, gw_ip, sizeof(rt_entry->gw_ip));
     if(oif)
         strncpy(rt_entry->oif, oif, sizeof(rt_entry->oif));
+
+	if (gw_ip || oif) {
+
+		rt_entry_has_data = true;
+	}
 
     head = rt_table->head;
     rt_table->head = rt_entry;
@@ -80,10 +87,25 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
     if(head)
     head->prev = rt_entry;
 
-	if (!new_entry) {
+	nfc_op_t nfc_op_code = NFC_UNKNOWN;
+
+	if (rt_entry->created == false &&
+			rt_entry_has_data) {
+
+		/* Publisher has just created this rt_entry */
+		nfc_op_code = NFC_ADD;
+		rt_entry->created = true;	
+	}
+	else{
+		/*  Publisher has updated the already existing rt_entry */
+		nfc_op_code = NFC_MOD;
+	}
+
+	if (nfc_op_code == NFC_ADD || 
+		nfc_op_code == NFC_MOD) {
 		nfc_invoke_notif_chain(rt_entry->nfc,
 				(char *)rt_entry, sizeof(rt_entry_t),
-				0, 0);
+				0, 0, nfc_op_code);
 	}
 	
     return rt_entry;
@@ -104,7 +126,7 @@ rt_delete_rt_entry(rt_table_t *rt_table,
             rt_entry_remove(rt_table, rt_entry);
 			nfc_invoke_notif_chain(rt_entry->nfc,
 				(char *)rt_entry, sizeof(rt_entry_t),
-				0, 0);
+				0, 0, NFC_DEL);
 			free(rt_entry->nfc);
             free(rt_entry);
             return true;
@@ -138,6 +160,19 @@ rt_dump_rt_table(rt_table_t *rt_table){
             rt_entry->rt_entry_keys.mask, 
             rt_entry->gw_ip,
             rt_entry->oif);
+		printf("\tPrinting Subscribers : ");
+		
+		glthread_t *curr;
+		notif_chain_elem_t *nfce;
+
+		ITERATE_GLTHREAD_BEGIN(&rt_entry->nfc->notif_chain_head, curr){
+
+			nfce = glthread_glue_to_notif_chain_elem(curr);
+			
+			printf("%u ", nfce->subs_id);
+
+		} ITERATE_GLTHREAD_END(&rt_entry->nfc->notif_chain_head, curr)
+
     } ITERTAE_RT_TABLE_END(rt_table, rt_entry);
 }
 
@@ -164,7 +199,8 @@ rt_table_register_for_notification(
 		rt_table_t *rt_table,
 		rt_entry_keys_t *key,
 		size_t key_size,
-		nfc_app_cb app_cb) {
+		nfc_app_cb app_cb,
+		uint32_t subs_id) {
 
 	rt_entry_t *rt_entry;
 	notif_chain_elem_t nfce;
@@ -186,6 +222,7 @@ rt_table_register_for_notification(
 	//memcpy(nfce.key, (char *)key, key_size);
 	//nfce.key_size = key_size;
 	nfce.app_cb = app_cb;
+	nfce.subs_id = subs_id;
 	nfc_register_notif_chain(rt_entry->nfc, &nfce);
 }
 

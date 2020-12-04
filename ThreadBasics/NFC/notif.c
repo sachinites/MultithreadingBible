@@ -46,7 +46,8 @@ nfc_register_notif_chain(notif_chain_t *nfc,
 void
 nfc_invoke_notif_chain(notif_chain_t *nfc,
 					   void *arg, size_t arg_size,
-					   char *key, size_t key_size){
+					   char *key, size_t key_size,
+					   nfc_op_t nfc_op_code){
 
 	glthread_t *curr;
 	notif_chain_elem_t *nfce;
@@ -64,13 +65,13 @@ nfc_invoke_notif_chain(notif_chain_t *nfc,
 		if(!(key && key_size && 
 			 nfce->is_key_set && (key_size == nfce->key_size))){
 				
-				nfce->app_cb(arg, arg_size);
+				nfce->app_cb(arg, arg_size, nfc_op_code, nfce->subs_id);
 		}
 		else {
 			
 			if(memcmp(key, nfce->key, key_size) == 0) {
 
-				nfce->app_cb(arg, arg_size);
+				nfce->app_cb(arg, arg_size, nfc_op_code, nfce->subs_id);
 			}
 		}
 	}ITERATE_GLTHREAD_END(&nfc->notif_chain_head, curr);

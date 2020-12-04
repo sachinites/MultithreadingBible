@@ -48,6 +48,7 @@ typedef struct rt_entry_{
 
     char gw_ip[16];
     char oif[32];
+	bool created;
     struct rt_entry_ *prev;
     struct rt_entry_ *next;	
 	notif_chain_t *nfc;
@@ -128,6 +129,7 @@ rt_table_register_for_notification(
 	rt_table_t *rt_table,
 	rt_entry_keys_t *key,
 	size_t key_size,
-	nfc_app_cb app_cb);
+	nfc_app_cb app_cb,
+	uint32_t subs_id);
 
 #endif /* __RT__ */

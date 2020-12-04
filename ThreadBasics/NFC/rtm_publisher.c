@@ -35,7 +35,43 @@ publisher_get_rt_table() {
 void
 main_menu() {
 
-	pause();
+	int choice;
+	while(1){
+		printf("Publisher Menu\n");
+		printf("1. Add/Update rt table entry\n");
+		printf("2. Delete rt table entry\n");
+		printf("3. Dump rt table\n");
+		printf("Enter Choice :");
+		choice = 0;
+		scanf("%d", &choice);
+		switch(choice){
+			case 1:
+				{
+					char dest[16];
+					char mask;
+					char oif[32];
+					char gw[16];
+					printf("Enter Destination :");
+					scanf("%s", dest);
+					printf("Mask : ");
+					scanf("%d", &mask);
+					printf("Enter oif name :");
+					scanf("%s", oif);
+					printf("Enter Gateway IP :");
+					scanf("%s", gw);
+					rt_add_or_update_rt_entry(publisher_get_rt_table(),
+							dest, mask, gw, oif);
+				}
+				break;
+			case 2:
+				/*  Implement your self */
+				break;
+			case 3:
+				rt_dump_rt_table(publisher_get_rt_table());
+				break;
+			default: ;
+		}
+	}
 }
 
 void *
@@ -55,7 +91,6 @@ publisher_thread_fn(void *arg) {
 		"122.1.1.3", 32, "10.1.1.3", "eth1");
 
 	rt_dump_rt_table(publisher_get_rt_table());
-	main_menu();
 }
 
 void
@@ -80,8 +115,10 @@ main(int argc, char **argv) {
 	/* Create Subscriber threads */
 	create_subscriber_thread(1);
 	sleep(1);
+
 	create_subscriber_thread(2);
 	sleep(1);
+
 	create_subscriber_thread(3);
 	sleep(1);
 
@@ -89,6 +126,7 @@ main(int argc, char **argv) {
 	create_publisher_thread();
 	printf("Publisher thread created\n");
 
+	main_menu();
 	pthread_exit(0);
 	return 0;
 }
