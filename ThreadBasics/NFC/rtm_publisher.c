@@ -91,6 +91,7 @@ publisher_thread_fn(void *arg) {
 		"122.1.1.3", 32, "10.1.1.3", "eth1");
 
 	rt_dump_rt_table(publisher_get_rt_table());
+	main_menu();
 }
 
 void
@@ -126,7 +127,6 @@ main(int argc, char **argv) {
 	create_publisher_thread();
 	printf("Publisher thread created\n");
 
-	main_menu();
 	pthread_exit(0);
 	return 0;
 }
