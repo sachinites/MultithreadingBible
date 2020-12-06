@@ -202,15 +202,24 @@ rt_table_register_for_notification(
 		nfc_app_cb app_cb,
 		uint32_t subs_id) {
 
+	bool new_entry_created;
 	rt_entry_t *rt_entry;
 	notif_chain_elem_t nfce;
+
+	new_entry_created = false;
 
 	rt_entry = rt_look_up_rt_entry(rt_table, key->dest, key->mask);
 
 	if (!rt_entry) {
-		
+		/* rt_entry was not existing before, but we are
+ 		 * creating it because subscriber is interested in notif
+ 		 * for this entry. Create such an entry without data. Later
+ 		 * When publisher would actually cate this entry, all registered
+ 		 * subscriber should be notified
+ 		 * */	
 		rt_entry = rt_add_or_update_rt_entry(
 					rt_table, key->dest, key->mask, 0, 0);
+		new_entry_created = true;
 	}
 	
 	memset(&nfce, 0, sizeof(notif_chain_elem_t));
@@ -224,5 +233,12 @@ rt_table_register_for_notification(
 	nfce.app_cb = app_cb;
 	nfce.subs_id = subs_id;
 	nfc_register_notif_chain(rt_entry->nfc, &nfce);
+
+	/* Subscriber subscribes to already existing rt entry,
+ 	 * immediately send notif to Subscriber with opcode
+ 	 * NFC_ADD*/
+	if (!new_entry_created) {
+		app_cb(rt_entry, sizeof(rt_entry_t), NFC_ADD, subs_id);
+	}
 }
 
