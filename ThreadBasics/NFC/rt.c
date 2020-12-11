@@ -49,10 +49,11 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
                     char *oif){
 
 	bool new_entry;
-	bool rt_entry_has_data;
     rt_entry_t *head = NULL;
     rt_entry_t *rt_entry = NULL;	
 	nfc_op_t nfc_op_code = NFC_UNKNOWN;
+
+	new_entry = false;
 
 	rt_entry = rt_look_up_rt_entry(rt_table, dest, mask);
 
@@ -66,6 +67,7 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
 		
 		rt_entry->nfc = nfc_create_new_notif_chain(0);
 		nfc_op_code = NFC_ADD;
+		new_entry = true;
 	}
 	else {
 		nfc_op_code = NFC_MOD;
@@ -76,13 +78,14 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
     if(oif)
         strncpy(rt_entry->oif, oif, sizeof(rt_entry->oif));
 
-    head = rt_table->head;
-    rt_table->head = rt_entry;
-    rt_entry->prev = 0;
-    rt_entry->next = head;
-    if(head)
-    head->prev = rt_entry;
-
+	if (new_entry) {
+		head = rt_table->head;
+		rt_table->head = rt_entry;
+		rt_entry->prev = 0;
+		rt_entry->next = head;
+		if(head)
+			head->prev = rt_entry;
+	}
 	nfc_invoke_notif_chain(
 			rt_entry->nfc,
 			(char *)rt_entry,
@@ -162,7 +165,7 @@ rt_dump_rt_table(rt_table_t *rt_table){
 			printf("%u ", nfce->subs_id);
 
 		} ITERATE_GLTHREAD_END(&rt_entry->nfc->notif_chain_head, curr)
-
+		printf("\n");
     } ITERTAE_RT_TABLE_END(rt_table, rt_entry);
 }
 
@@ -173,7 +176,6 @@ rt_look_up_rt_entry(rt_table_t *rt_table,
 	rt_entry_t *rt_entry = NULL;
 	
 	ITERTAE_RT_TABLE_BEGIN(rt_table, rt_entry) {
-
 		if ((strncmp(rt_entry->rt_entry_keys.dest,
 					dest, sizeof(rt_entry->rt_entry_keys.dest)) == 0) &&
 			rt_entry->rt_entry_keys.mask == mask) {

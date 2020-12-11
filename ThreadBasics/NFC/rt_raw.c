@@ -48,10 +48,11 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
                     char *gw_ip, 
                     char *oif){
 
-	bool rt_entry_has_data;
+	bool new_entry;
     rt_entry_t *head = NULL;
     rt_entry_t *rt_entry = NULL;	
 
+	new_entry = false;
 	rt_entry = rt_look_up_rt_entry(rt_table, dest, mask);
 
 	if(!rt_entry) {
@@ -61,20 +62,23 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
 		strncpy(rt_entry->rt_entry_keys.dest, dest,
 			sizeof(rt_entry->rt_entry_keys.dest));
     	rt_entry->rt_entry_keys.mask = mask;
+		new_entry = true;
 	}
 
     if(gw_ip)
         strncpy(rt_entry->gw_ip, gw_ip, sizeof(rt_entry->gw_ip));
     if(oif)
         strncpy(rt_entry->oif, oif, sizeof(rt_entry->oif));
-
-    head = rt_table->head;
-    rt_table->head = rt_entry;
-    rt_entry->prev = 0;
-    rt_entry->next = head;
-    if(head)
-    head->prev = rt_entry;
 	
+	if (new_entry) {
+		head = rt_table->head;
+		rt_table->head = rt_entry;
+		rt_entry->prev = 0;
+		rt_entry->next = head;
+		if(head)
+			head->prev = rt_entry;
+	}
+
     return rt_entry;
 }
 

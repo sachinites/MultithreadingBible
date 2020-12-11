@@ -112,7 +112,6 @@ int
 main(int argc, char **argv) {
 
 	rt_init_rt_table(&publisher_rt_table);
-	
 	/* Create Subscriber threads */
 	create_subscriber_thread(1);
 	sleep(1);
@@ -122,11 +121,9 @@ main(int argc, char **argv) {
 
 	create_subscriber_thread(3);
 	sleep(1);
-
 	/* Create publisher thread*/
 	create_publisher_thread();
 	printf("Publisher thread created\n");
-
 	pthread_exit(0);
 	return 0;
 }

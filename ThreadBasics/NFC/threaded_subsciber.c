@@ -56,7 +56,7 @@ subscriber_thread_fn(void *arg){
     rt_entry_keys.mask = 32;
 	rt_table_register_for_notification(publisher_get_rt_table(), &rt_entry_keys, sizeof(rt_entry_keys_t), test_cb, (uint32_t)arg);	
 
-    pause();
+	pause();
 	return NULL;
 }
 
