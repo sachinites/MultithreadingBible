@@ -52,9 +52,7 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
 	bool rt_entry_has_data;
     rt_entry_t *head = NULL;
     rt_entry_t *rt_entry = NULL;	
-	new_entry = false;
-
-	rt_entry_has_data = false;
+	nfc_op_t nfc_op_code = NFC_UNKNOWN;
 
 	rt_entry = rt_look_up_rt_entry(rt_table, dest, mask);
 
@@ -67,18 +65,16 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
     	rt_entry->rt_entry_keys.mask = mask;
 		
 		rt_entry->nfc = nfc_create_new_notif_chain(0);
-		rt_entry->created = false;
+		nfc_op_code = NFC_ADD;
+	}
+	else {
+		nfc_op_code = NFC_MOD;
 	}
 
     if(gw_ip)
         strncpy(rt_entry->gw_ip, gw_ip, sizeof(rt_entry->gw_ip));
     if(oif)
         strncpy(rt_entry->oif, oif, sizeof(rt_entry->oif));
-
-	if (gw_ip || oif) {
-
-		rt_entry_has_data = true;
-	}
 
     head = rt_table->head;
     rt_table->head = rt_entry;
@@ -87,27 +83,16 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
     if(head)
     head->prev = rt_entry;
 
-	nfc_op_t nfc_op_code = NFC_UNKNOWN;
+	nfc_invoke_notif_chain(
+			rt_entry->nfc,
+			(char *)rt_entry,
+			sizeof(rt_entry_t),
+			0,	/*  No need to specify the key's
+					because all notif_chain_elem_t
+					need to be invoked  */
+			0,
+			nfc_op_code);
 
-	if (rt_entry->created == false &&
-			rt_entry_has_data) {
-
-		/* Publisher has just created this rt_entry */
-		nfc_op_code = NFC_ADD;
-		rt_entry->created = true;	
-	}
-	else{
-		/*  Publisher has updated the already existing rt_entry */
-		nfc_op_code = NFC_MOD;
-	}
-
-	if (nfc_op_code == NFC_ADD || 
-		nfc_op_code == NFC_MOD) {
-		nfc_invoke_notif_chain(rt_entry->nfc,
-				(char *)rt_entry, sizeof(rt_entry_t),
-				0, 0, nfc_op_code);
-	}
-	
     return rt_entry;
 }
 
@@ -124,10 +109,15 @@ rt_delete_rt_entry(rt_table_t *rt_table,
             rt_entry->rt_entry_keys.mask == mask){
 
             rt_entry_remove(rt_table, rt_entry);
+
 			nfc_invoke_notif_chain(rt_entry->nfc,
-				(char *)rt_entry, sizeof(rt_entry_t),
-				0, 0, NFC_DEL);
+					(char *)rt_entry, sizeof(rt_entry_t),
+					0, 0, NFC_DEL);
+			nfc_delete_all_nfce(rt_entry->nfc);
 			free(rt_entry->nfc);
+			rt_entry->nfc = NULL;
+			free(rt_entry->nfc);
+
             free(rt_entry);
             return true;
         }

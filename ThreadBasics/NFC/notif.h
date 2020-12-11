@@ -81,6 +81,9 @@ notif_chain_t *
 nfc_create_new_notif_chain(char *notif_chain_name);
 
 void
+nfc_delete_all_nfce(notif_chain_t *nfc);
+
+void
 nfc_register_notif_chain(notif_chain_t *nfc,
                      notif_chain_elem_t *nfce);
 

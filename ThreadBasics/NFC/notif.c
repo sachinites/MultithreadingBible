@@ -44,6 +44,20 @@ nfc_register_notif_chain(notif_chain_t *nfc,
 }
 
 void
+nfc_delete_all_nfce(notif_chain_t *nfc){
+
+	glthread_t *curr;
+	notif_chain_elem_t *nfce;
+	
+	ITERATE_GLTHREAD_BEGIN(&nfc->notif_chain_head, curr){
+
+		nfce = glthread_glue_to_notif_chain_elem(curr);
+		remove_glthread(&nfce->glue);
+		free(nfce);	
+	} ITERATE_GLTHREAD_END(&nfc->notif_chain_head, curr);
+}
+
+void
 nfc_invoke_notif_chain(notif_chain_t *nfc,
 					   void *arg, size_t arg_size,
 					   char *key, size_t key_size,
