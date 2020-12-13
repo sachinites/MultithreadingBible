@@ -51,7 +51,6 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
 	bool new_entry;
     rt_entry_t *head = NULL;
     rt_entry_t *rt_entry = NULL;	
-	nfc_op_t nfc_op_code = NFC_UNKNOWN;
 
 	new_entry = false;
 
@@ -66,11 +65,7 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
     	rt_entry->rt_entry_keys.mask = mask;
 		
 		rt_entry->nfc = nfc_create_new_notif_chain(0);
-		nfc_op_code = NFC_ADD;
 		new_entry = true;
-	}
-	else {
-		nfc_op_code = NFC_MOD;
 	}
 
     if(gw_ip)
@@ -86,15 +81,15 @@ rt_add_or_update_rt_entry(rt_table_t *rt_table,
 		if(head)
 			head->prev = rt_entry;
 	}
-	nfc_invoke_notif_chain(
-			rt_entry->nfc,
-			(char *)rt_entry,
-			sizeof(rt_entry_t),
-			0,	/*  No need to specify the key's
-					because all notif_chain_elem_t
-					need to be invoked  */
-			0,
-			nfc_op_code);
+
+	if (gw_ip || oif) {
+
+		/* Entry is being updated by the publisher, send
+ 		 * notification to all subscribers*/
+		nfc_invoke_notif_chain(rt_entry->nfc,
+				(char *)rt_entry, sizeof(rt_entry_t),
+				0, 0, NFC_MOD);
+	}
 
     return rt_entry;
 }
