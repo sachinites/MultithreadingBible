@@ -34,6 +34,12 @@ write_into_file(void *arg){
 	int len;
 	int count = 0;
 
+	/* Mark the thread eligible for cancellation */
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE /* PTHREAD_CANCEL_DISABLE */, 0);
+
+	/* Mode of cancellation */
+	pthread_setcanceltype( PTHREAD_CANCEL_ASYNCHRONOUS, 0);
+
 	int *thread_id = (int  *)arg;
 
 	sprintf(file_name, "thread_%d.txt", *thread_id);
@@ -85,6 +91,7 @@ main(int argc, char **argv){
 		switch(choice) {
 
 			case 1:
+				pthread_cancel(slaves[thread_num]);
 				break;
 			default:
 				continue;
