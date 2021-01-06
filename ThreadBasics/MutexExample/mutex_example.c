@@ -64,8 +64,7 @@ thread_fn_callback_sum(void *arg) {
 			i++;
 		}
 		printf("sum = %d\n", sum);
-		print_array();
-		assert(sum == 15);
+		//print_array();
 	} while(1);
 }
 
@@ -79,8 +78,8 @@ thread_fn_callback_swap(void *arg) {
 		temp = arr[0];	
 		arr[0] = arr[arr_size -1];
 		arr[arr_size-1] = temp;	
-		printf("swap :\n");
-		print_array();
+		//printf("swap :\n");
+		//print_array();
 	} while(1);
 }
 
