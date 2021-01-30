@@ -31,7 +31,6 @@
 #include <assert.h>
 
 int arr[] = { 1, 2, 3, 4, 5};
-pthread_mutex_t arr_mutex;
 
 void
 print_array(){
@@ -60,7 +59,6 @@ thread_fn_callback_sum(void *arg) {
 	do {
 		sum = 0;
 		i = 0;
-		pthread_mutex_lock(&arr_mutex);
 		while(i < arr_size) {
 			sum += arr[i];
 			i++;
@@ -68,7 +66,6 @@ thread_fn_callback_sum(void *arg) {
 		printf("sum = %d\n", sum);
 		print_array();
 		assert(sum == 15);
-		pthread_mutex_unlock(&arr_mutex);
 	} while(1);
 }
 
@@ -79,13 +76,11 @@ thread_fn_callback_swap(void *arg) {
 	int arr_size = sizeof(arr)/sizeof(arr[0]);
 
 	do {
-		pthread_mutex_lock(&arr_mutex);
 		temp = arr[0];	
 		arr[0] = arr[arr_size -1];
 		arr[arr_size-1] = temp;	
 		printf("swap :\n");
 		print_array();
-		pthread_mutex_unlock(&arr_mutex);
 	} while(1);
 }
 
@@ -127,7 +122,6 @@ swap_thread_create() {
 int
 main(int argc, char **argv){
 
-	pthread_mutex_init(&arr_mutex, 0);	
 	sum_thread_create();
 	swap_thread_create();
 

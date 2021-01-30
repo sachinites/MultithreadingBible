@@ -13,11 +13,11 @@ struct Queue_t* initQ(){
 }
 
 
-int
+bool
 is_queue_empty(struct Queue_t *q){
 	if(q->count == 0)
-		return 1;
-	return 0;
+		return true;
+	return false;
 }
 
 
@@ -40,7 +40,6 @@ enqueue(struct Queue_t *q, void *ptr){
 	
 	if(is_queue_empty(q)){
 		q->elem[q->front] = ptr;
-		printf("element inserted at index = %d\n", q->front);
 		q->count++;
 		return true;
 	}
@@ -53,9 +52,6 @@ enqueue(struct Queue_t *q, void *ptr){
 
 	q->elem[q->rear] = ptr;
 	q->count++;;
-	return true;
-
-	printf("element inserted at index = %d\n", q->rear);
 	return true;
 }
 
@@ -78,7 +74,7 @@ deque(struct Queue_t *q){
 	}
 
 	if(q->front == Q_DEFAULT_SIZE -1)
-		q->front = 0
+		q->front = 0;
 	else
 		q->front++;
 	return elem;
@@ -92,7 +88,7 @@ print_Queue(struct Queue_t *q){
 	for(i = 0; i < Q_DEFAULT_SIZE; i++){
 		if(q->elem[i] == NULL)
 			continue;
-		printf("index = %u, elem = 0x%x\n", i, (unsigned int)q->elem[i]);
+		printf("index = %u, elem = %p\n", i, q->elem[i]);
 	}
 }
 

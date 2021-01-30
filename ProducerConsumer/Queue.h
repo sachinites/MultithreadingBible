@@ -4,14 +4,14 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-#define Q_DEFAULT_SIZE  50
+#define Q_DEFAULT_SIZE  5
 struct Queue_t{
         void *elem[Q_DEFAULT_SIZE];
         unsigned int front;
         unsigned int rear;
         unsigned int count;
 		pthread_mutex_t q_mutex;
-		pthread_mutex_t q_cv;
+		pthread_cond_t q_cv;
 };
 
 struct Queue_t* initQ(void);
