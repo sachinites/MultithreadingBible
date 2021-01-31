@@ -20,29 +20,32 @@
 
 Problem Statement :
 ====================
-Write a program which launche 4 threads - 2 consumer threads and 2 producer threads. Threads
+Write a program which launches 4 threads - 2 consumer threads and 2 producer threads. Threads
 are created in Detached Mode.
-All 4 threads acts on a shared resource - A Queue of integers. Producer threads produce
-a random inetger and add it to Queue, Consumer threads remove an integer from the Queue.
+All 4 threads act on a shared resource - A Queue of integers. Producer threads produce
+a random integer and add it to Queue, Consumer threads remove an integer from the Queue.
 Maximum size of the Queue is 5.
 
-Following is the constraints applied :
+Following are the constraints applied :
 
-1. When producer threads produce an element and add it to the Queue, it do not unlocks the Queue
-untill the Queue is full i.e. producer thread release the Queue only when it is empty
+1. When producer threads produce an element and add it to the Queue, it does not release the Queue
+untill the Queue is full i.e producer thread release the Queue only when it is full
 
-2. When consumer threads consumes an element from the Queue, it consumes the the entire Queue and
+2. When consumer threads consume an element from the Queue, it consumes the entire Queue and
 do not release it until the Queue is empty.
 
-3. Thread produce and consume elements from queue at the rate of 1s per element
+3. Consumer Signals the Producers when Queue is Exhausted, Producers Signals the Consumers when Queue	
+becomes full
+
+4. Thread produce and consume elements into/from queue at the rate of 1s per element
 
 Guidelines :
-Use as many printfs as possible, so you you can debug the program easily
+Use as many printfs as possible, so you can debug the program easily
 
 Conmpile and Run :
 gcc -g -c Queue.c -o Queue.o
-gcc -g -c Assignment.c -o Assignment.o
-gcc -g Assignment.o Queue.o -o exe -lpthread
+gcc -g -c Assignment_prod_cons_on_Q.c -o Assignment_prod_cons_on_Q.o
+gcc -g Assignment_prod_cons_on_Q.o Queue.o -o exe -lpthread
  
 #endif
 
@@ -62,10 +65,10 @@ static int new_int() {
 
 struct Queue_t *Q;
 
-static const char *prod1 = "Prod1";
-static const char *prod2 = "Prod2";
-static const char *cons1 = "Cons1";
-static const char *cons2 = "Cons2";
+static const char *prod1 = "TP1";
+static const char *prod2 = "TP2";
+static const char *cons1 = "TC1";
+static const char *cons2 = "TC2";
 
 static void *
 prod_fn(void *arg) {
@@ -73,21 +76,21 @@ prod_fn(void *arg) {
 	char *th_name = (char *)arg;
 
 	printf("Thread %s waiting to lock the Queue\n", th_name);
-	pthread_mutex_lock(&Q->q_mutex);
+	pthread_mutex_lock(&Q->q_mutex); /* S6 */
 	printf("Thread %s locks the Queue\n", th_name);
 
-	/* Predicate check */
+	/* Predicate check S7 */
 	while (is_queue_full(Q)) {
 		printf("Thread %s blocks itself, Q is already Full\n", th_name);
 		pthread_cond_wait(&Q->q_cv, &Q->q_mutex);
 		printf("Thread %s wakes up, checking the Queue status again\n", th_name);
 	}
 
-	/*  PRoducer must start pushing elements in emoty Queue only */
+	/*  PRoducer must start pushing elements in empty Queue only */
 	assert(is_queue_empty(Q));
 
 	int i;
-	while(!is_queue_full(Q)) {
+	while(!is_queue_full(Q)) { /* Predicate check S7 */
 		i = new_int();
 		printf("Thread %s produces new integer %d\n", th_name, i);
 		enqueue(Q, (void *)i); /* Dont ask me why I is type casted into void !, ok, you can ask me :p */
@@ -95,8 +98,9 @@ prod_fn(void *arg) {
 		sleep(1);
 	}
 	
-	printf("Thread %s Filled up the Queue, releasing lock\n", th_name);
-	pthread_mutex_unlock(&Q->q_mutex);
+	printf("Thread %s Filled up the Queue, signalling and releasing lock\n", th_name);
+	pthread_cond_signal(&Q->q_cv); /* S8 */
+	pthread_mutex_unlock(&Q->q_mutex); /* S9 */
 	return NULL;
 }
 
@@ -106,19 +110,20 @@ cons_fn(void *arg) {
 	char *th_name = (char *)arg;
 
 	printf("Thread %s waiting to lock the Queue\n", th_name);
-	pthread_mutex_lock(&Q->q_mutex);
+	pthread_mutex_lock(&Q->q_mutex); /* S1 */
 	printf("Thread %s locks the Queue\n", th_name);
 
-	/* Predicate check */
+	/* Predicate check S2 */
 	while (is_queue_empty(Q)) {
 		printf("Thread %s blocks itself, Q is already empty\n", th_name);
-		pthread_cond_wait(&Q->q_cv, &Q->q_mutex);
+		pthread_cond_wait(&Q->q_cv, &Q->q_mutex); /* S3 */
 		printf("Thread %s wakes up, checking the Queue status again\n", th_name);
 	}
 
 	/*  Consumer must start consuming elements from Full Queue only */
 	assert(is_queue_full(Q));
 
+	/* S4 begin*/
 	int i;
 	while(!is_queue_empty(Q)) {
 		i = (int)deque(Q);
@@ -126,9 +131,14 @@ cons_fn(void *arg) {
 				th_name, i, Q->count);
 		sleep(1);
 	}
+	/* send signal to Producer thread waiting on Queue */
+	printf("Thread %s Drains the entire Queue, sending signal to Blocking Threads",
+		th_name);
+	pthread_cond_signal(&Q->q_cv);
+	/*  S4 end*/
 	
-	printf("Thread %s Drains the entire Queue, releasing lock\n", th_name);
-	pthread_mutex_unlock(&Q->q_mutex);
+	printf("Thread %s releasing lock\n", th_name);
+	pthread_mutex_unlock(&Q->q_mutex);	/* Step S5 */
 	return NULL;
 }
 

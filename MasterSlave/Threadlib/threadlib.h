@@ -30,6 +30,7 @@ typedef struct thread_{
     pthread_cond_t cond_var;
     pthread_attr_t attributes;
 	bool block_status;
+	pthread_mutex_t thread_state_mutex;
 } thread_t;
 
 thread_t *

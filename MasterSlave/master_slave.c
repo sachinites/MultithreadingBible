@@ -25,26 +25,27 @@
 #define N_SLAVES	5
 
 thread_t *slaves[N_SLAVES];
-pthread_mutex_t mutex;
 
 static void
 resume_thread(thread_t *thread){
 
-	pthread_mutex_lock(&mutex);
+	pthread_mutex_lock(&thread->thread_state_mutex);
 	printf("%s signalled\n", thread->name);
 	thread->block_status = false;
 	pthread_cond_signal(&thread->cond_var);
-	pthread_mutex_unlock(&mutex);
+	pthread_mutex_unlock(&thread->thread_state_mutex);
 }
 
 static void
-stop_thread(thread_t *thread){
+pthread_insert_pause_point(thread_t *thread){
 
-	pthread_mutex_lock(&mutex);
-	printf("%s blocked\n", thread->name);	
-	pthread_cond_wait(&thread->cond_var, &mutex);
+	pthread_mutex_lock(&thread->thread_state_mutex);
+	if (thread->block_status) {
+	printf("%s blocked\n", thread->name);
+	pthread_cond_wait(&thread->cond_var, &thread->thread_state_mutex);
+	}
 	printf("%s resumed\n", thread->name);	
-	pthread_mutex_unlock(&mutex);
+	pthread_mutex_unlock(&thread->thread_state_mutex);
 }
 
 void *
@@ -72,10 +73,7 @@ write_into_file(void *arg){
 		fwrite(string_to_write, sizeof(char), len, fptr);
 		fflush(fptr);
 		sleep(1);
-
-		if (thread->block_status) {
-			stop_thread(thread);
-		}
+		pthread_insert_pause_point(thread);
 	}
 	return 0; 
 }
@@ -85,8 +83,6 @@ main(int argc, char **argv){
 
 	int i;
 	char thread_name[32];
-
-	pthread_mutex_init(&mutex, 0);
 
 	for( i = 0; i < N_SLAVES; i++){
 		sprintf(thread_name, "thread_%d", i);

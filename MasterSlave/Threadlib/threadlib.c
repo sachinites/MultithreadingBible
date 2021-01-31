@@ -34,6 +34,7 @@ create_thread(thread_t *thread,
 	pthread_cond_init(&thread->cond_var, 0);
 	pthread_attr_init(&thread->attributes);
 	thread->block_status = false;
+	pthread_mutex_init(&thread->thread_state_mutex, 0);
 	return thread;
 }
 
