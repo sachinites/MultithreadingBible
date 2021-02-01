@@ -86,7 +86,7 @@ prod_fn(void *arg) {
 		printf("Thread %s wakes up, checking the Queue status again\n", th_name);
 	}
 
-	/*  PRoducer must start pushing elements in empty Queue only */
+	/*  Start of the C.S of Producer. Producer must start pushing elements in empty Queue only */
 	assert(is_queue_empty(Q));
 
 	int i;
@@ -95,12 +95,15 @@ prod_fn(void *arg) {
 		printf("Thread %s produces new integer %d\n", th_name, i);
 		enqueue(Q, (void *)i); /* Dont ask me why I is type casted into void !, ok, you can ask me :p */
 		printf("Thread %s pushed integer %d in Queue, Queue size = %d\n", th_name, i, Q->count);
-		sleep(1);
+		//sleep(1);
 	}
 	
 	printf("Thread %s Filled up the Queue, signalling and releasing lock\n", th_name);
-	pthread_cond_signal(&Q->q_cv); /* S8 */
+	pthread_cond_broadcast(&Q->q_cv); /* S8 */
+
+	/* End of CS of producer */
 	pthread_mutex_unlock(&Q->q_mutex); /* S9 */
+	printf("Thread %s finished, and exit\n", th_name);
 	return NULL;
 }
 
@@ -120,7 +123,7 @@ cons_fn(void *arg) {
 		printf("Thread %s wakes up, checking the Queue status again\n", th_name);
 	}
 
-	/*  Consumer must start consuming elements from Full Queue only */
+	/*  Start of C.S of Consumer. Consumer must start consuming elements from Full Queue only */
 	assert(is_queue_full(Q));
 
 	/* S4 begin*/
@@ -129,16 +132,19 @@ cons_fn(void *arg) {
 		i = (int)deque(Q);
 		printf("Thread %s consumes an integer %d, Queue size = %d\n",
 				th_name, i, Q->count);
-		sleep(1);
+		//sleep(1);
 	}
 	/* send signal to Producer thread waiting on Queue */
-	printf("Thread %s Drains the entire Queue, sending signal to Blocking Threads",
+	printf("Thread %s Drains the entire Queue, sending signal to Blocking Threads\n",
 		th_name);
-	pthread_cond_signal(&Q->q_cv);
+	pthread_cond_broadcast(&Q->q_cv);
 	/*  S4 end*/
 	
 	printf("Thread %s releasing lock\n", th_name);
+
+	/* End of C.S of Consumer */
 	pthread_mutex_unlock(&Q->q_mutex);	/* Step S5 */
+	printf("Thread %s finished, and exit\n", th_name);
 	return NULL;
 }
 
@@ -150,7 +156,7 @@ main(int argc, char **argv) {
 	
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
 	pthread_t prod_th1, prod_th2; /*  Two producer threads */
 	pthread_t cons_th1, cons_th2; /*  Two consumer threads */
@@ -167,6 +173,12 @@ main(int argc, char **argv) {
 	pthread_create(
 				&cons_th2, &attr, cons_fn, (void *)cons2);
 
+	pthread_join(prod_th1, 0);
+	pthread_join(prod_th2, 0);
+	pthread_join(cons_th1, 0);
+	pthread_join(cons_th2, 0);
+
+	printf("Program Finished\n");
 	pthread_exit(0);
 	return 0;
 }
