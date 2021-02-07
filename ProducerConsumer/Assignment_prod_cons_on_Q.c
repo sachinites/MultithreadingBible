@@ -21,7 +21,7 @@
 Problem Statement :
 ====================
 Write a program which launches 4 threads - 2 consumer threads and 2 producer threads. Threads
-are created in Detached Mode.
+are created in JOINABLE Mode.
 All 4 threads act on a shared resource - A Queue of integers. Producer threads produce
 a random integer and add it to Queue, Consumer threads remove an integer from the Queue.
 Maximum size of the Queue is 5.
@@ -36,8 +36,6 @@ do not release it until the Queue is empty.
 
 3. Consumer Signals the Producers when Queue is Exhausted, Producers Signals the Consumers when Queue	
 becomes full
-
-4. Thread produce and consume elements into/from queue at the rate of 1s per element
 
 Guidelines :
 Use as many printfs as possible, so you can debug the program easily
@@ -95,7 +93,6 @@ prod_fn(void *arg) {
 		printf("Thread %s produces new integer %d\n", th_name, i);
 		enqueue(Q, (void *)i); /* Dont ask me why I is type casted into void !, ok, you can ask me :p */
 		printf("Thread %s pushed integer %d in Queue, Queue size = %d\n", th_name, i, Q->count);
-		//sleep(1);
 	}
 	
 	printf("Thread %s Filled up the Queue, signalling and releasing lock\n", th_name);
@@ -132,7 +129,6 @@ cons_fn(void *arg) {
 		i = (int)deque(Q);
 		printf("Thread %s consumes an integer %d, Queue size = %d\n",
 				th_name, i, Q->count);
-		//sleep(1);
 	}
 	/* send signal to Producer thread waiting on Queue */
 	printf("Thread %s Drains the entire Queue, sending signal to Blocking Threads\n",
