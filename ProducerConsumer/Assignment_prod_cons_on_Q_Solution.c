@@ -73,7 +73,34 @@ prod_fn(void *arg) {
 
 	char *th_name = (char *)arg;
 
-	/* Code Producer Logic here */
+	printf("Thread %s waiting to lock the Queue\n", th_name);
+	pthread_mutex_lock(&Q->q_mutex); /* S6 */
+	printf("Thread %s locks the Queue\n", th_name);
+
+	/* Predicate check S7 */
+	while (is_queue_full(Q)) {
+		printf("Thread %s blocks itself, Q is already Full\n", th_name);
+		pthread_cond_wait(&Q->q_cv, &Q->q_mutex);
+		printf("Thread %s wakes up, checking the Queue status again\n", th_name);
+	}
+
+	/*  Start of the C.S of Producer. Producer must start pushing elements in empty Queue only */
+	assert(is_queue_empty(Q));
+
+	int i;
+	while(!is_queue_full(Q)) { /* Predicate check S7 */
+		i = new_int();
+		printf("Thread %s produces new integer %d\n", th_name, i);
+		enqueue(Q, (void *)i); /* Dont ask me why I is type casted into void !, ok, you can ask me :p */
+		printf("Thread %s pushed integer %d in Queue, Queue size = %d\n", th_name, i, Q->count);
+	}
+	
+	printf("Thread %s Filled up the Queue, signalling and releasing lock\n", th_name);
+	pthread_cond_broadcast(&Q->q_cv); /* S8 */
+
+	/* End of CS of producer */
+	pthread_mutex_unlock(&Q->q_mutex); /* S9 */
+	printf("Thread %s finished, and exit\n", th_name);
 	return NULL;
 }
 
@@ -82,7 +109,38 @@ cons_fn(void *arg) {
 
 	char *th_name = (char *)arg;
 
-	/* Code Consumer Logic here */
+	printf("Thread %s waiting to lock the Queue\n", th_name);
+	pthread_mutex_lock(&Q->q_mutex); /* S1 */
+	printf("Thread %s locks the Queue\n", th_name);
+
+	/* Predicate check S2 */
+	while (is_queue_empty(Q)) {
+		printf("Thread %s blocks itself, Q is already empty\n", th_name);
+		pthread_cond_wait(&Q->q_cv, &Q->q_mutex); /* S3 */
+		printf("Thread %s wakes up, checking the Queue status again\n", th_name);
+	}
+
+	/*  Start of C.S of Consumer. Consumer must start consuming elements from Full Queue only */
+	assert(is_queue_full(Q));
+
+	/* S4 begin*/
+	int i;
+	while(!is_queue_empty(Q)) {
+		i = (int)deque(Q);
+		printf("Thread %s consumes an integer %d, Queue size = %d\n",
+				th_name, i, Q->count);
+	}
+	/* send signal to Producer thread waiting on Queue */
+	printf("Thread %s Drains the entire Queue, sending signal to Blocking Threads\n",
+		th_name);
+	pthread_cond_broadcast(&Q->q_cv);
+	/*  S4 end*/
+	
+	printf("Thread %s releasing lock\n", th_name);
+
+	/* End of C.S of Consumer */
+	pthread_mutex_unlock(&Q->q_mutex);	/* Step S5 */
+	printf("Thread %s finished, and exit\n", th_name);
 	return NULL;
 }
 
