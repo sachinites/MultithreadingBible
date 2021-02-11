@@ -73,6 +73,12 @@ prod_fn(void *arg) {
 
 	char *th_name = (char *)arg;
 
+	/* **************** 
+	 * Join Telegram grp for QnA, Career Guidance,
+	 * Dicount/Free Courses, Career Discussions etc.
+ 	 * Grp ID : telecsepracticals
+ 	 */
+
 	/* Code Producer Logic here */
 	return NULL;
 }
@@ -81,6 +87,12 @@ static void *
 cons_fn(void *arg) {
 
 	char *th_name = (char *)arg;
+	
+	/* **************** 
+	 * Join Telegram grp for QnA, Career Guidance,
+	 * Dicount/Free Courses, Career Discussions etc.
+ 	 * Grp ID : telecsepracticals
+ 	 */
 
 	/* Code Consumer Logic here */
 	return NULL;
