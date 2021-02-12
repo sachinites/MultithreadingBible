@@ -23,12 +23,18 @@
 #include <unistd.h>
 #include "din_ph.h"
 
+/*
+ * Visit : www.csepracticals.com for more courses and projects.
+ * Join Telegram grp for QnA, Career Guidance,
+ * Dicount/Free Courses, Career Discussions etc.
+ * Telegram Grp ID : telecsepracticals
+ */
 #define N_PHILOSOPHER	5
 
 static phil_t phil[N_PHILOSOPHER];
 static spoon_t spoon[N_PHILOSOPHER];
 
-static spoon_t *phil_get_left_spoon(phil_t *phil) {
+static spoon_t *phil_get_right_spoon(phil_t *phil) {
 
 	int phil_id = phil->phil_id;
 
@@ -38,7 +44,7 @@ static spoon_t *phil_get_left_spoon(phil_t *phil) {
 	return &spoon[phil_id - 1];
 }
 
-static spoon_t *phil_get_right_spoon(phil_t *phil) {
+static spoon_t *phil_get_left_spoon(phil_t *phil) {
 
 	return &spoon[phil->phil_id];
 }
