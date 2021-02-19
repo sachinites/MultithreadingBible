@@ -218,8 +218,8 @@ philosopher_fn( void *arg) {
 			
 			phil_eat(phil);
 			philosopher_release_both_spoons(phil);
+			sleep(1); /*  For next sec for next attemptu to get spoons */
 		}
-		sleep(1); /*  For next sec for next attemptu to get spoons */
 	}
 }
 
