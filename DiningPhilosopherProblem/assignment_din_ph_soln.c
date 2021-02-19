@@ -118,89 +118,83 @@ philosopher_get_access_both_spoons(phil_t *phil) {
 	spoon_t *right_spoon = phil_get_right_spoon(phil);
 
 	/*  before checking statys of the spoon, lock it, While one
- 	 *  philosopher is insepcting the state of the spoon, no
- 	 *  other phil must change it */
+	 *  philosopher is insepcting the state of the spoon, no
+	 *  other phil must change it */
 	printf("Phil %d waiting for lock on left spoon %d\n",
-		phil->phil_id, left_spoon->spoon_id);
+			phil->phil_id, left_spoon->spoon_id);
 	pthread_mutex_lock(&left_spoon->mutex);
 	printf("phil %d inspecting left spoon %d state\n",
-		phil->phil_id, left_spoon->spoon_id);
+			phil->phil_id, left_spoon->spoon_id);
 
 	/* Case 1 : if spoon is being used by some other phil, then wait */
 	while(left_spoon->is_used &&
-		  left_spoon->phil != phil) {
+			left_spoon->phil != phil) {
 
 		printf("phil %d blocks as left spoon %d is not available\n",
 				phil->phil_id, left_spoon->spoon_id);
 		pthread_cond_wait(&left_spoon->cv, &left_spoon->mutex);
 
 		printf("phil %d recvs signal to grab spoon %d\n",
-			phil->phil_id, left_spoon->spoon_id);
+				phil->phil_id, left_spoon->spoon_id);
 	}
 
 
 	/* Case 2 : if spoon is available, grab it and try for another spoon */
-	
+
 	/*This condn will always be true anyway if you manage to hit this if condition*/
-	if (left_spoon->is_used == false) { 
-	
-		printf("phil %d finds left spoon %d available, trying to grab it\n",
-				phil->phil_id, left_spoon->spoon_id);
-		left_spoon->is_used = true;
-		left_spoon->phil = phil;
-		printf("phil %d has successfully grabbed the left spoon %d\n",
-				phil->phil_id, left_spoon->spoon_id);
-		pthread_mutex_unlock(&left_spoon->mutex);
-		
-		/* case 2.1 : Trying to grab the right spoon now*/
-		printf("phil %d now making an attempt to grab the right spoon %d\n",
-				phil->phil_id, right_spoon->spoon_id);
 
-		/* lock the right spoon before inspecting its state */
-		printf("phil %d waiting for lock on right spoon %d\n",
-				phil->phil_id, right_spoon->spoon_id);
-		pthread_mutex_lock(&right_spoon->mutex);
-		printf("phil %d inspecting right spoon %d state\n",
-				phil->phil_id, right_spoon->spoon_id);
+	printf("phil %d finds left spoon %d available, trying to grab it\n",
+			phil->phil_id, left_spoon->spoon_id);
+	left_spoon->is_used = true;
+	left_spoon->phil = phil;
+	printf("phil %d has successfully grabbed the left spoon %d\n",
+			phil->phil_id, left_spoon->spoon_id);
+	pthread_mutex_unlock(&left_spoon->mutex);
 
-		if (right_spoon->is_used == false) {
-			/* right spoon is also available, grab it and eat */
-			right_spoon->is_used = true;
-			right_spoon->phil = phil;
-			pthread_mutex_unlock(&right_spoon->mutex);
-			return true;
-		}
+	/* case 2.1 : Trying to grab the right spoon now*/
+	printf("phil %d now making an attempt to grab the right spoon %d\n",
+			phil->phil_id, right_spoon->spoon_id);
 
-		else if (right_spoon->is_used == true) {
-					
-			if (right_spoon->phil != phil) {
-				
-				printf("phil %d finds right spoon %d is already used by phil %d"
+	/* lock the right spoon before inspecting its state */
+	printf("phil %d waiting for lock on right spoon %d\n",
+			phil->phil_id, right_spoon->spoon_id);
+	pthread_mutex_lock(&right_spoon->mutex);
+	printf("phil %d inspecting right spoon %d state\n",
+			phil->phil_id, right_spoon->spoon_id);
+
+	if (right_spoon->is_used == false) {
+		/* right spoon is also available, grab it and eat */
+		right_spoon->is_used = true;
+		right_spoon->phil = phil;
+		pthread_mutex_unlock(&right_spoon->mutex);
+		return true;
+	}
+
+	else if (right_spoon->is_used == true) {
+
+		if (right_spoon->phil != phil) {
+
+			printf("phil %d finds right spoon %d is already used by phil %d"
 					" releasing the left spoon as well\n",
 					phil->phil_id, right_spoon->spoon_id, right_spoon->phil->phil_id);
 
-				pthread_mutex_lock(&left_spoon->mutex);
-				assert(left_spoon->is_used == true);
-				assert(left_spoon->phil == phil);
-				left_spoon->is_used = false;
-				left_spoon->phil = NULL;
-				printf("phil %d release the left spoon %d\n",
+			pthread_mutex_lock(&left_spoon->mutex);
+			assert(left_spoon->is_used == true);
+			assert(left_spoon->phil == phil);
+			left_spoon->is_used = false;
+			left_spoon->phil = NULL;
+			printf("phil %d release the left spoon %d\n",
 					phil->phil_id, left_spoon->spoon_id);
-				pthread_mutex_unlock(&left_spoon->mutex);
-				pthread_mutex_unlock(&right_spoon->mutex);
-				return false;
-			}
-			else {
-				printf("phil %d already has right spoon %d in hand\n",
-					phil->phil_id, right_spoon->spoon_id);
-				pthread_mutex_unlock(&right_spoon->mutex);
-				return true;
-			}	
+			pthread_mutex_unlock(&left_spoon->mutex);
+			pthread_mutex_unlock(&right_spoon->mutex);
+			return false;
 		}
-	}
-	else {
-
-		assert(0); /*  not possible to reach here */
+		else {
+			printf("phil %d already has right spoon %d in hand\n",
+					phil->phil_id, right_spoon->spoon_id);
+			pthread_mutex_unlock(&right_spoon->mutex);
+			return true;
+		}	
 	}
 	assert(0);	  /* should be Dead code */
 	return false; /*  make compiler happy */
