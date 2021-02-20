@@ -141,8 +141,6 @@ philosopher_get_access_both_spoons(phil_t *phil) {
 
 	/* Case 2 : if spoon is available, grab it and try for another spoon */
 
-	/*This condn will always be true anyway if you manage to hit this if condition*/
-
 	printf("phil %d finds left spoon %d available, trying to grab it\n",
 			phil->phil_id, left_spoon->spoon_id);
 	left_spoon->is_used = true;
