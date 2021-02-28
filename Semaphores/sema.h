@@ -36,4 +36,17 @@ sema_destroy(sema_t *sema);
 int
 sema_getvalue(sema_t *sema);
 
+/*
+ * Several texts using P & V notation to represent
+ * wait and signals
+ */
+#define P(sema) sema_wait(sema)
+#define V(sema)	sema_post(sema)
+
+/*
+ * Some texts also use up and down
+ */
+#define UP(sema)	sema_wait(sema)
+#define DOWN(sema)	sema_post(sema)
+
 #endif /* __SEMA__ */
