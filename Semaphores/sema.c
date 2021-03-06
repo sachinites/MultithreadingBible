@@ -15,7 +15,7 @@
  *
  * =====================================================================================
  */
-
+#include <stdlib.h>
 #include <pthread.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -30,6 +30,13 @@ struct sema_ {
 	pthread_mutex_t destroy_sema_mutex;
 };
 
+sema_t *
+sema_get_new_semaphore() {
+
+	sema_t *sema = calloc(1, sizeof(sema_t));
+	return sema;
+}
+
 void
 sema_init(sema_t *sema, int permit_counter) {
 
@@ -40,6 +47,7 @@ sema_init(sema_t *sema, int permit_counter) {
 	pthread_mutex_init(&sema->destroy_sema_mutex, NULL);
 }
 
+/* Do while loop implementation */
 void
 sema_wait(sema_t *sema) {
 	/* 
@@ -63,6 +71,38 @@ sema_wait(sema_t *sema) {
 			/* Calling thread has woken up, enter into C.S only when
  			 * pending signal is available, else continue to stay blocked*/
 		} while(sema->pending_signals < 1);
+
+		/* Got the license to enter into C.S, consume one pending signal */
+		sema->pending_signals--;
+	}
+	pthread_mutex_unlock(&sema->mutex);
+}
+
+/* While loop implementation */
+void
+sema_wait2(sema_t *sema) {
+	/* 
+ 	 * lock the mutex so that state of semaphore cannot be
+ 	 * changed by any other thread
+ 	 * */
+	pthread_mutex_lock(&sema->mutex);
+	
+	/* Calling thread is trying to enter into C.S, decrease the
+ 	 * semaphore */
+	sema->permit_counter--;
+
+	/* If after decrement the Semaphore permit_counter is -ve, then calling thread
+ 	 *  must block*/
+	if (sema->permit_counter < 0) {
+
+		while(sema->pending_signals < 1) {
+			
+			/* Semaphore permit_counter is  -ve, not permitted to enter into C.S*/
+			pthread_cond_wait(&sema->cv, &sema->mutex);
+
+			/* Calling thread has woken up, enter into C.S only when
+ 			 * pending signal is available, else continue to stay blocked*/
+		}
 
 		/* Got the license to enter into C.S, consume one pending signal */
 		sema->pending_signals--;

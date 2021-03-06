@@ -21,6 +21,9 @@
 
 typedef struct sema_ sema_t;
 
+sema_t *
+sema_get_new_semaphore();
+
 void
 sema_init(sema_t *sema, int count);
 
