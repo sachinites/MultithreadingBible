@@ -1,7 +1,7 @@
 /*
  * =====================================================================================
  *
- *       Filename:  hello_world.c
+ *       Filename:  semaphore_hello_world.c
  *
  *    Description: This file demonstrates the use of POSIX threads - A hello world program 
  *
@@ -68,7 +68,6 @@ thread_fn_callback(void *arg) {
 	
 	printf("%s exit from C.S\n",
 		thread_name);
-
 }
 
 void
@@ -98,6 +97,7 @@ main(int argc, char **argv){
 	for ( i = 0; i < 5; i++ ) {
 		pthread_join(threads[i], NULL);
 	}
+	sem_destroy(&sem);
 	return 0;
 }
 
