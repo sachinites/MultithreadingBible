@@ -24,6 +24,11 @@
 #include "monitor.h"
 
 
+/*
+   pls visit : www.csepracticals.com for more courses
+   Join Telegream Grp : telecsepracticals
+*/
+
 monitor_t *
 init_monitor(monitor_t *monitor,
 			 char *resource_name){
