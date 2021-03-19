@@ -1,6 +1,4 @@
 #include <stdio.h>
-#include <pthread.h>
-#include <stdint.h>
 #include "threadbarrier.h"
 
 static th_barrier_t th_barrier;
