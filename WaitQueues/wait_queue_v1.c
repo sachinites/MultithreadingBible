@@ -1,20 +1,9 @@
+/* This file implements the routines for wait_queue thread-synch data structure */
 #include <stdio.h>
-#include <pthread.h>
-#include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <assert.h>
-
-typedef bool (*wait_queue_block_fn)
-  (void *appln_arg, pthread_mutex_t ** locked_appln_mutex);
-
-typedef struct wait_queue_
-{
-
-  uint32_t thread_wait_count;
-  pthread_cond_t cv;
-  pthread_mutex_t *appln_mutex;
-} wait_queue_t;
+#include "wait_queue.h"
 
 void
 wait_queue_init (wait_queue_t * wq)
@@ -33,6 +22,10 @@ wait_queue_re_init (wait_queue_t * wq)
   wq->appln_mutex = NULL;
 }
 
+/* All the majic of the Wait-Queue Thread-Synch Data structure lies in this
+API call. ISt arg is a wait-queue, 2nd arg is a ptr to the application fn
+the result (bool result) of which decides whether the calling thread need
+to block on wait_queue or not. The 3rd param is the argument to a fn */
 void
 wait_queue_test_and_wait (wait_queue_t * wq,
 			  wait_queue_block_fn wait_queue_block_fn_cb,
@@ -42,12 +35,19 @@ wait_queue_test_and_wait (wait_queue_t * wq,
   bool should_block;
   pthread_mutex_t *locked_appln_mutex = NULL;
 
+  /* Invoke the application fn to decide whether the calling thread
+  needs to be blocked. This fn must lock the application mutex, and test
+  the appln specific condn and return true or false without unlocking
+  the mutex */
   should_block = wait_queue_block_fn_cb (arg, &locked_appln_mutex);
 
+  /* Application must return the mutex which it has already locked*/
   assert (locked_appln_mutex);
 
   if (!wq->appln_mutex)
     {
+      /* Catch the application mutex, WQ would need this for signaling
+      the blocked threads on WQ*/
       wq->appln_mutex = locked_appln_mutex;
     }
   else
@@ -55,11 +55,19 @@ wait_queue_test_and_wait (wait_queue_t * wq,
       assert (wq->appln_mutex == locked_appln_mutex);
     }
 
+  /* Conventional While loop which acts on predicate, and accordingly block
+  the calling thread by invoking pthread_cond_wait*/
   while (should_block)
     {
       wq->thread_wait_count++;
       pthread_cond_wait (&wq->cv, wq->appln_mutex);
       wq->thread_wait_count--;
+      /* The thread wakes up, retest the predicate again to 
+         handle spurious wake up. Not that, appln need not test the
+         block condition by locking the mutex this time since mutex is
+         already locked in yhe first invocation of wait_queue_block_fn_cb()
+         Hence Pass NULL as 2nd arg which hints the application that it has
+         to test the predicate without locking any mutex */
       should_block = wait_queue_block_fn_cb (arg, NULL);
     }
 
