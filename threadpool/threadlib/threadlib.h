@@ -62,13 +62,22 @@ typedef struct thread_pool_ {
   pthread_mutex_t mutex;
 } thread_pool_t;
 
-typedef struct thread_fn_wrapper_ {
-    void *(*thread_actual_fn)(void *);
-    void *actual_arg;
-    void (*thread_end_fn)(thread_pool_t *, thread_t *);
+typedef struct thread_execution_data_ {
+    /* Actual user defined work to be done by the thread*/
+    void *(*thread_stage2_fn)(void *);
+    /* Actual Input to be provided to the thread */
+    void *stage2_arg;
+    /* The fn executed by the thread when thread has finished its
+       user defined work. This fn queues up the thread back in thread
+       pool and optionally notifies the parent thread if required*/
+    void (*thread_stage3_fn)(thread_pool_t *, thread_t *);
+    /* Below two are Arguments for stage 3 function
+    /* Thread pool to which the thread need to rest in peace after
+       it has accomplished its task*/
     thread_pool_t *thread_pool;
+    /* Data structure representing the thread*/
     thread_t *thread;
-} thread_fn_wrapper_t;
+} thread_execution_data_t;
 
 void
 thread_pool_insert_new_thread(thread_pool_t *th_pool, thread_t *thread);
@@ -86,3 +95,18 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
                             bool block_caller);
 
 #endif /* __THREAD_LIB__  */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

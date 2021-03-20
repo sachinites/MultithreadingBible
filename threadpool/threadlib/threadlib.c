@@ -69,10 +69,8 @@ run_thread(thread_t *thread,
 
 /* Thread Pool Implementation Starts from here*/
 
-
 static void
-thread_pool_thread_start_fn(thread_pool_t *th_pool,
-                            thread_t *thread) {
+thread_pool_run_thread (thread_t *thread) {
     /* 
        This fn assumes that thread has already been removed from
        thread pool
@@ -92,7 +90,7 @@ thread_pool_thread_start_fn(thread_pool_t *th_pool,
 }
 
 static void
-thread_pool_thread_end_fn(thread_pool_t *th_pool,
+thread_pool_thread_stage3_fn(thread_pool_t *th_pool,
                           thread_t *thread) {
     
     pthread_mutex_lock(&th_pool->mutex);
@@ -114,21 +112,34 @@ thread_pool_thread_end_fn(thread_pool_t *th_pool,
 }
 
 static void *
-thread_pool_wrapper_thread_fn(void *arg) {
+thread_fn_execute_stage2_and_stage3(void *arg) {
 
-    thread_fn_wrapper_t *thread_fn_wrapper =
-            (thread_fn_wrapper_t *)arg;
+    thread_execution_data_t *thread_execution_data =
+            (thread_execution_data_t *)arg;
     
     while(true) {
-            
-        thread_fn_wrapper->thread_actual_fn (thread_fn_wrapper->actual_arg);
-        thread_fn_wrapper->thread_end_fn (thread_fn_wrapper->thread_pool, 
-                                          thread_fn_wrapper->thread);
+         /* Stage 2 : USer defined function with user defined argument*/
+        thread_execution_data->thread_stage2_fn (thread_execution_data->stage2_arg);
+        /*  Stage 3 : Queue the thread in thread pool and block it*/
+        thread_execution_data->thread_stage3_fn (thread_execution_data->thread_pool, 
+                                          thread_execution_data->thread);
    }
 }
 
-void
-thread_pool_dispatch_thread (thread_pool_t *th_pool,
+/* This fn trigger the thread work cycle which involves :
+    1. Stage 1 : Picking up the thread from thread pool
+                 Set up the Zero semaphore (optionally) if parent thread needs to blocked
+                    until the worker thread finishes the task
+    2. Setup stage 2 and stage 3
+        2.a : Stage 2 - Thread does the actual task assigned by the appln
+        2.b : Stage 3 - Thread park itself back in thread pool and notify the
+            appln thread (parent thread) if required
+            
+    thread_execution_data_t is a data structure which stores the functions (unit of work) along
+    with the data (arguments) to be processed by worker thread in stage 2 and stage 3
+*/
+static void
+thread_pool_thread_stage1_fn (thread_pool_t *th_pool,
                             void *(*thread_fn)(void *),
                             void *arg,
                             bool block_caller) {
@@ -147,32 +158,55 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
         return;
     }
     
+    /* Cache the semaphore in the thread itself, so that when
+       thread finishes the stage 3, it can notify the parent thread
+    */
     thread->caller_semaphore = sem0_1 ? sem0_1 : NULL;
     
-    thread_fn_wrapper_t *thread_fn_wrapper_arg = 
-        (thread_fn_wrapper_t *)(thread->arg);
+    thread_execution_data_t *thread_execution_data = 
+        (thread_execution_data_t *)(thread->arg);
     
-     if (thread_fn_wrapper_arg == NULL ) {
-        thread_fn_wrapper_arg = calloc (1, sizeof(thread_fn_wrapper_t));
+     if (thread_execution_data == NULL ) {
+         /* In this data structure, we would wrap up all the information
+            which thread needs to execute stage 2 ans stage 3
+         */
+        thread_execution_data = calloc (1, sizeof(thread_execution_data_t));
      }
     
-    thread_fn_wrapper_arg->thread_actual_fn = thread_fn;
-    thread_fn_wrapper_arg->actual_arg = arg;
-    thread_fn_wrapper_arg->thread_end_fn = thread_pool_thread_end_fn;
-    thread_fn_wrapper_arg->thread_pool = th_pool;
-    thread_fn_wrapper_arg->thread = thread;
+    /* Setup Stage 2 in which thread would do assigned task*/
+    thread_execution_data->thread_stage2_fn = thread_fn;
+    thread_execution_data->stage2_arg = arg;
     
-    thread->thread_fn = thread_pool_wrapper_thread_fn;
-    thread->arg = (void *)thread_fn_wrapper_arg;
+    /* Setup Stage 3 in which thread would park itself in thread pool */
+    thread_execution_data->thread_stage3_fn = thread_pool_thread_stage3_fn;
+    thread_execution_data->thread_pool = th_pool;
+    thread_execution_data->thread = thread;
     
-    thread_pool_thread_start_fn(th_pool, thread);
+    /* Assign the aggregate work to the thread to perform i.e. Stage 2 followed
+       by stage 3 */
+    thread->thread_fn = thread_fn_execute_stage2_and_stage3;
+    thread->arg = (void *)thread_execution_data;
+    
+    /* Fire the thread now */
+    thread_pool_run_thread (thread);
     
    if (block_caller) {
+       /* Wait for the thread to finish the Stage 2 and Stage 3 work*/
        sem_wait(sem0_1);
+       /* Caller is notified , destory the semaphore */
        sem_destroy(sem0_1);
        free(sem0_1);
        sem0_1 = NULL;
    }
+}
+
+void
+thread_pool_dispatch_thread (thread_pool_t *th_pool,
+                            void *(*thread_fn)(void *),
+                            void *arg,
+                            bool block_caller) {
+
+    thread_pool_thread_stage1_fn (th_pool, thread_fn, arg, block_caller);
 }
     
 void
@@ -221,6 +255,9 @@ thread_pool_get_thread(thread_pool_t *th_pool) {
 
 /* Main application using thread pool starts here */
 
+/* Comparison fn to enqueue the thread in thread-pool. Returning -1 means
+   newly added thread would queue up in the front of the thread pool list
+*/
 int
 thread_pool_thread_insert_comp_fn(void *thread1, void *thread2){
 
@@ -257,16 +294,14 @@ main(int argc, char **argv) {
     
     /* Create two threads (not execution units, just thread_t data structures) */
     thread_t *thread1 = create_thread(0, "even_thread", THREAD_WRITER);
-    //thread_t *thread2 = create_thread(0, "odd_thread", THREAD_WRITER);
+    thread_t *thread2 = create_thread(0, "odd_thread", THREAD_WRITER);
     
     /* Insert both threads in thread pools*/
     thread_pool_insert_new_thread(th_pool, thread1);
-    //thread_pool_insert_new_thread(th_pool, thread2);
+    thread_pool_insert_new_thread(th_pool, thread2);
     
     thread_pool_dispatch_thread(th_pool, even_thread_work, 0, false);
-    thread_pool_dispatch_thread(th_pool, odd_thread_work, 0, true);
-    thread_pool_dispatch_thread(th_pool, even_thread_work, 0, true);
-    thread_pool_dispatch_thread(th_pool, odd_thread_work, 0, true);
+    thread_pool_dispatch_thread(th_pool, odd_thread_work,  0, false);
     
     pthread_exit(0);
     return 0;
