@@ -1051,6 +1051,27 @@ monitor_is_resource_not_available(void *arg,
 	return !monitor_is_resource_available(arg, mutex);
 }
 
+/* Caller is responsible to lock monitor's mutex */
+static void
+monitor_set_resource_status (monitor_t *monitor,
+							 thread_t *access_granted_thread) {
+
+	if (!access_granted_thread) {
+		monitor->resource_status = MON_RES_AVAILABLE;
+		return;
+	}
+	
+	switch(access_granted_thread->thread_op) {
+			
+		case THREAD_READER:
+			monitor->resource_status = MON_RES_BUSY_BY_READER;
+			break;
+		case THREAD_WRITER:
+			monitor->resource_status = MON_RES_BUSY_BY_WRITER;
+		default: ;
+	}
+}
+
 void
 monitor_request_access_permission(
 	monitor_t *monitor,
@@ -1099,8 +1120,8 @@ monitor_request_access_permission(
 							&monitor->n_curr_writers;
 	
 		(*max_curr_user_count)++;
-	
-	monitor_unlock_monitor_talk_mutex(monitor);
+		monitor_set_resource_status (monitor, thread);
+		monitor_unlock_monitor_talk_mutex(monitor);
 }
 	
 void
@@ -1133,6 +1154,11 @@ monitor_inform_resource_released(
 				/* If some writer threads are waiting, broadcast all of them */
 				wait_queue_broadcast(&monitor->writer_thread_wait_q);
 			}
+			else if (monitor->n_curr_readers == 0) {
+				/* If there are nobody in the waiting list, and the last reader thread
+				   has also released the resource, mark the resource as available*/
+				monitor_set_resource_status(monitor, NULL);
+			}
 			
 		case THREAD_WRITER:
 			monitor->n_curr_writers--;
@@ -1143,6 +1169,11 @@ monitor_inform_resource_released(
 			else if (monitor->reader_thread_wait_q.thread_wait_count) {
 				/* If some reader threads are waiting, broadcast all of them */
 				wait_queue_broadcast(&monitor->reader_thread_wait_q);
+			}
+			else if (monitor->n_curr_writers == 0) {
+				/* If there are nobody in the waiting list, and the last writer thread
+				   has also released the resource, mark the resource as availble*/
+				monitor_set_resource_status(monitor, NULL);
 			}
 		default : ;
 	}
