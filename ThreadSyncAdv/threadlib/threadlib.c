@@ -21,6 +21,7 @@
 #include <memory.h>
 #include <assert.h>
 #include <unistd.h>
+#include <stdint.h>
 #include "threadlib.h"
 
 
@@ -47,7 +48,7 @@ create_thread(thread_t *thread,
 	pthread_cond_init(&thread->cv, 0);
 	pthread_attr_init(&thread->attributes);
 	thread->thread_op = thread_op;
-    init_glthread(&thread->thread_pool_glue);
+    init_glthread(&thread->wait_glue);
 	return thread;
 }
 
@@ -75,7 +76,7 @@ thread_pool_run_thread (thread_t *thread) {
        This fn assumes that thread has already been removed from
        thread pool
      */
-    assert (IS_GLTHREAD_LIST_EMPTY(&thread->thread_pool_glue));
+    assert (IS_GLTHREAD_LIST_EMPTY(&thread->wait_glue));
     
     if (!thread->thread_created) {
         run_thread(thread, thread->thread_fn, thread->arg);
@@ -96,9 +97,9 @@ thread_pool_thread_stage3_fn(thread_pool_t *th_pool,
     pthread_mutex_lock(&th_pool->mutex);
     
     glthread_priority_insert (&th_pool->pool_head,
-                              &thread->thread_pool_glue,
+                              &thread->wait_glue,
                               th_pool->comp_fn,
-                              (size_t)&(((thread_t *)0)->thread_pool_glue));
+                              (size_t)&(((thread_t *)0)->wait_glue));
     
     /* Tell the caller thread (which dispatched me from pool) that in
     am done */
@@ -225,13 +226,13 @@ thread_pool_insert_new_thread(thread_pool_t *th_pool,
    
     pthread_mutex_lock(&th_pool->mutex);
     
-    assert (IS_GLTHREAD_LIST_EMPTY(&thread->thread_pool_glue));
+    assert (IS_GLTHREAD_LIST_EMPTY(&thread->wait_glue));
     assert(thread->thread_fn == NULL);
     
     glthread_priority_insert (&th_pool->pool_head,
-                              &thread->thread_pool_glue,
+                              &thread->wait_glue,
                               th_pool->comp_fn,
-                              (size_t)&(((thread_t *)0)->thread_pool_glue));
+                              (size_t)&(((thread_t *)0)->wait_glue));
                               
     pthread_mutex_unlock(&th_pool->mutex);
 }
@@ -248,7 +249,7 @@ thread_pool_get_thread(thread_pool_t *th_pool) {
         pthread_mutex_unlock(&th_pool->mutex);
         return NULL;
     }
-    thread = thread_pool_glue_to_thread(glthread);
+    thread = wait_glue_to_thread(glthread);
     pthread_mutex_unlock(&th_pool->mutex);
     return thread;
 }
@@ -284,7 +285,7 @@ odd_thread_work(void *arg) {
     }
 }
 
-
+#if 0
 int
 main(int argc, char **argv) {
 
@@ -307,24 +308,172 @@ main(int argc, char **argv) {
     return 0;
 }
 
+#endif
 
+/* Event Pair Implementation Begin */
 
+void
+event_pair_server_init (event_pair_t *ep) {
+	
+	sem_init(&ep->server_sem0, 0, 0);
+	/* It is suffice to initialize the initial_sync_sem0 in server_init
+	fn since it is to be initialized only once, and we usually start servers
+	before clients*/
+	sem_init(&ep->initial_sync_sem0, 0, 0);
+}
 
+void
+event_pair_client_init (event_pair_t *ep) {
+	
+	sem_init(&ep->client_sem0, 0, 0);
+}
 
+/* Blocks the calling thread */
+void
+event_pair_server_wait (event_pair_t *ep) {
 
+	sem_wait(&ep->server_sem0);
+}
 
+void
+event_pair_client_wait (event_pair_t *ep) {
 
+	sem_wait(&ep->client_sem0);
+}
 
+/* Signal the other party, and block yourself */
+void
+event_pair_server_handoff (event_pair_t *ep) {
 
+	sem_post(&ep->client_sem0);
+}
 
+void
+event_pair_client_handoff (event_pair_t *ep) {
 
+	sem_post(&ep->server_sem0);
+}
 
+void
+event_pair_server_destroy (event_pair_t *ep) {
 
+	sem_destroy(&ep->server_sem0);
+}
 
+void
+event_pair_client_destroy (event_pair_t *ep) {
 
+	sem_destroy(&ep->client_sem0);
+}
 
+void
+event_pair_initial_sync_wait (event_pair_t *ep) {
 
+	sem_wait(&ep->initial_sync_sem0);
+}
 
+void
+event_pair_initial_sync_signal (event_pair_t *ep) {
 
+	sem_post(&ep->initial_sync_sem0);
+}
 
+#if 1
+static uint32_t global_shared_memory  = 1;
 
+void *
+server_fn(void *arg) {
+
+	event_pair_t *ep = (event_pair_t *)arg;
+	event_pair_initial_sync_signal ( ep );
+	
+	while(true) {
+		/* Wait for client request now */
+		printf("Server thread waiting client's next request\n");
+		event_pair_server_wait(ep);
+	
+		printf("Server thread recvd client request = %u\n",
+			global_shared_memory);
+	
+		/* Pick the request from shared memory and respond*/
+		printf("Server thread processed client's request\n");
+		global_shared_memory *= 2;
+		
+		event_pair_server_handoff(ep);
+		printf("Server thread handoff to client\n");	
+	}
+}
+
+void *
+client_fn(void *arg) {
+
+	event_pair_t *ep = (event_pair_t *)arg;
+	
+	while(true) {
+	
+		printf("client thread prepared next request = %u to send to server\n",
+			global_shared_memory);
+		
+		event_pair_client_handoff(ep);
+		printf("Client thread handoff to server\n");
+		
+		printf("client thread waiting for response from server\n");
+		event_pair_client_wait(ep);
+		
+		/* process the server response here*/
+		printf("client thread recvd server's response = %u\n",
+			global_shared_memory);
+		
+		printf("client thread processed server's response\n");
+		/* Pick the request from shared memory and respond*/
+		if (global_shared_memory > 1024) {
+			exit(0);
+		}
+	}
+}
+
+int
+main(int argc, char **argv) {
+
+  
+    /* Create two threads (not execution units, just thread_t data structures) */
+    thread_t *client_thread = create_thread(0, "client_thread", THREAD_WRITER);
+    thread_t *server_thread = create_thread(0, "server_thread", THREAD_WRITER);
+	
+	/* Create and initialize the Event Pair Object */
+	event_pair_t *ep = calloc(1, sizeof(event_pair_t));
+	event_pair_server_init ( ep );
+	
+	/* Run the Server Thread */
+	run_thread ( server_thread, server_fn, (void *)ep );
+	
+	/* Wait for the server thread to start and wait for the 
+	   request from client*/
+	event_pair_initial_sync_wait(ep);
+	
+	event_pair_client_init(ep);
+	/* We are here, means the server thread is blocked and waiting for
+	request from client*/
+	run_thread ( client_thread, client_fn, (void *)ep );
+	
+    pthread_exit(0);
+    return 0;
+}
+
+/* More Ques :
+Implement the below scheme between client and server as follows :
+1. client sends 3 integers to server one by one - perpendicular (P), hypotenuse(H), and base(B).
+2. Server do not responds to client until it recvs all three integers from client
+3. Once Server recvs all three integers, server replies to client stating whether 
+	P, H and B forms a right angle triangle or not. Server sends only boolean as a response
+	to client
+4. Client prints the response recvd from server in the following format : 
+	< Sq(H)  = Or !=  Sq(P) + Sq(B) >   ( = Or != Sign needs to be printed based on server boolean output recvd) 
+	For ex : Sq(5) = Sq(3) + Sq(4)
+5. You can use random number generation function on the client side to generate integers representing H, P and B 
+	(within range of [1, 500]). Google it.
+6. You are not suppose to modify the library code !
+*/
+#endif
+
+/* Event Pair Implementation End */

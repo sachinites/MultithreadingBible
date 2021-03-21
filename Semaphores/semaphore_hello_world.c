@@ -54,7 +54,7 @@ thread_fn_callback(void *arg) {
 	printf("%s entered into C.S\n",
 			thread_name);
 	
-	for ( i = 0 ; i < 5; i++) {
+	for ( i = 0 ; i < 5; i++) {:q
 		printf("%s executing in C.S\n",
 			thread_name);
 		sleep(1);

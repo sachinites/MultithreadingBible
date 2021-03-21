@@ -23,7 +23,6 @@ thread_barrier_init ( th_barrier_t *barrier, uint32_t count) {
 }
 
 void
-
 thread_barrier_signal_all ( th_barrier_t *barrier) {
 
 	pthread_mutex_lock (&barrier->mutex);
@@ -38,6 +37,7 @@ thread_barrier_signal_all ( th_barrier_t *barrier) {
 	pthread_cond_signal(&barrier->cv);
 	pthread_mutex_unlock (&barrier->mutex);	
 }
+
 
 void
 thread_barrier_barricade ( th_barrier_t *barrier) {

@@ -41,10 +41,10 @@ typedef struct thread_{
     pthread_cond_t cv;
     pthread_attr_t attributes;
     thread_op_type_t thread_op;
-    glthread_t thread_pool_glue;
+    glthread_t wait_glue;
 } thread_t;
-GLTHREAD_TO_STRUCT(thread_pool_glue_to_thread,
-        thread_t, thread_pool_glue);
+GLTHREAD_TO_STRUCT(wait_glue_to_thread,
+        thread_t, wait_glue);
 
 thread_t *
 create_thread(thread_t *thread, char *name,
@@ -54,7 +54,7 @@ void
 run_thread(thread_t *thread, void *(*thread_fn)(void *), void *arg);
 
 
-/* Thread Pool */
+/* Thread Pool Begin */
 typedef struct thread_pool_ {
   
   glthread_t pool_head;
@@ -93,6 +93,52 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
                             void *(*thread_fn)(void *),
                             void *arg,
                             bool block_caller);
+
+/* Thread Pool End */
+
+/* Event Pair Begin */
+
+typedef struct event_pair_ {
+	
+	sem_t client_sem0;
+	sem_t server_sem0;
+	sem_t initial_sync_sem0;
+} event_pair_t;
+
+void
+event_pair_server_init (event_pair_t *ep);
+
+void
+event_pair_client_init (event_pair_t *ep);
+
+/* Blocks the calling thread */
+void
+event_pair_server_wait (event_pair_t *ep);
+
+void
+event_pair_client_wait (event_pair_t *ep);
+
+void
+event_pair_initial_sync_wait (event_pair_t *ep);
+
+void
+event_pair_initial_sync_signal (event_pair_t *ep);
+
+/* Signal the other party */
+void
+event_pair_server_handoff (event_pair_t *ep);
+
+void
+event_pair_client_handoff (event_pair_t *ep);
+
+void
+event_pair_server_destroy (event_pair_t *ep);
+
+void
+event_pair_client_destroy (event_pair_t *ep);
+
+/* Event Pair End */
+
 
 #endif /* __THREAD_LIB__  */
 
