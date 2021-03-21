@@ -68,6 +68,23 @@ run_thread(thread_t *thread,
                    arg);
 }
 
+void
+thread_lib_print_thread(thread_t *thread) {
+
+	printf("thread->name = %s\n", thread->name);
+	printf("thread->thread_created = %s\n",
+		thread->thread_created ? "Y" : "N");
+	printf("thread->thread_op = %u\n", thread->thread_op);
+}
+
+
+
+
+
+
+
+
+
 /* Thread Pool Implementation Starts from here*/
 
 static void
@@ -254,6 +271,7 @@ thread_pool_get_thread(thread_pool_t *th_pool) {
     return thread;
 }
 
+#if 0
 /* Main application using thread pool starts here */
 
 /* Comparison fn to enqueue the thread in thread-pool. Returning -1 means
@@ -285,7 +303,6 @@ odd_thread_work(void *arg) {
     }
 }
 
-#if 0
 int
 main(int argc, char **argv) {
 
@@ -309,6 +326,18 @@ main(int argc, char **argv) {
 }
 
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* Event Pair Implementation Begin */
 
@@ -378,7 +407,7 @@ event_pair_initial_sync_signal (event_pair_t *ep) {
 	sem_post(&ep->initial_sync_sem0);
 }
 
-#if 1
+#if 0
 static uint32_t global_shared_memory  = 1;
 
 void *
@@ -477,3 +506,653 @@ Implement the below scheme between client and server as follows :
 #endif
 
 /* Event Pair Implementation End */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Wait Queue Implementation Starts Here */
+
+static int
+priority_wq_insert_comp_fn(void *new_user_data, void *user_data_from_list) {
+
+	thread_t *thread1 = (thread_t *)new_user_data;
+	thread_t *thread2 = (thread_t *)user_data_from_list;
+	
+	/* If we return 1, then Queue becomes FIFO */
+	return 1;
+}
+
+
+void
+wait_queue_init (wait_queue_t * wq, bool priority_flag,
+				int (*insert_cmp_fn)(void *, void *))
+{
+  wq->priority_flag = priority_flag;
+  wq->thread_wait_count = 0;
+  pthread_cond_init (&wq->cv, NULL);
+  wq->appln_mutex = NULL;
+  init_glthread(&wq->priority_wait_queue_head);
+  wq->insert_cmp_fn = insert_cmp_fn;
+  if (wq->priority_flag) {
+	  assert(wq->insert_cmp_fn);
+  }
+}
+
+/* All the majic of the Wait-Queue Thread-Synch Data structure lies in this
+API call. ISt arg is a wait-queue, 2nd arg is a ptr to the application fn
+the result (bool result) of which decides whether the calling thread need
+to block on wait_queue or not. The 3rd param is the argument to a fn.
+This fn returns the threads which has been signalled from WQ. This threads
+Can be different from curr_thread (last arg)
+*/
+thread_t *
+wait_queue_test_and_wait (wait_queue_t * wq,
+			  wait_queue_block_fn wait_queue_block_fn_cb,
+			  void *arg,
+			  thread_t *curr_thread) {
+	
+  bool should_block;
+  thread_t *return_thread;
+  pthread_mutex_t *locked_appln_mutex = NULL;
+	
+ return_thread = NULL;
+	
+  /* If it is PQ, then passing the curr_thread ptr is mandatory */
+  if (wq->priority_flag) {
+		assert(curr_thread);
+  }
+
+  return_thread = curr_thread;
+	
+  /* Invoke the application fn to decide whether the calling thread
+  needs to be blocked. This fn must lock the application mutex, and test
+  the appln specific condn and return true or false without unlocking
+  the mutex */
+  should_block = wait_queue_block_fn_cb (arg, &locked_appln_mutex);
+
+  /* Application must return the mutex which it has already locked*/
+  assert (locked_appln_mutex);
+
+  if (!wq->appln_mutex)
+    {
+      /* Catch the application mutex, WQ would need this for signaling
+      the blocked threads on WQ*/
+      wq->appln_mutex = locked_appln_mutex;
+    }
+  else
+    {
+      assert (wq->appln_mutex == locked_appln_mutex);
+    }
+
+  /* Conventional While loop which acts on predicate, and accordingly block
+  the calling thread by invoking pthread_cond_wait*/
+  while (should_block) {
+	  
+      wq->thread_wait_count++;
+	  
+	  /* If this is normal WQ, then block all threads on a common CV */
+	  if (!wq->priority_flag) {
+		  pthread_cond_wait (&wq->cv, wq->appln_mutex);
+		  /* We will not know which thread would wake up, hence return NULL.*/
+		  return_thread = NULL; 
+	  }
+	  else {
+	  /* If it is a Priority Wait Queue, then block all threads on their
+	     respective CV owned by the thread it-self */
+		  glthread_priority_insert (&wq->priority_wait_queue_head,
+                                    &curr_thread->wait_glue,
+                                    wq->insert_cmp_fn,
+                                    (size_t)&(((thread_t *)0)->wait_glue));
+	  
+      	  pthread_cond_wait (&curr_thread->cv, wq->appln_mutex);
+	  }
+      wq->thread_wait_count--;
+	  
+	  if (wq->priority_flag) {
+		  curr_thread = wait_glue_to_thread(
+			  				dequeue_glthread_first(
+								&wq->priority_wait_queue_head));
+		  return_thread = curr_thread;
+	  }
+      /* The thread wakes up, retest the predicate again to 
+         handle spurious wake up. Not that, appln need not test the
+         block condition by locking the mutex this time since mutex is
+         already locked in yhe first invocation of wait_queue_block_fn_cb()
+         Hence Pass NULL as 2nd arg which hints the application that it has
+         to test the predicate without locking any mutex */
+      should_block = wait_queue_block_fn_cb (arg, NULL);
+    }
+
+  if (wq->thread_wait_count == 0) {
+      wq->appln_mutex = NULL;
+  }
+  
+  pthread_mutex_unlock (locked_appln_mutex);
+  return return_thread;
+}
+
+void
+wait_queue_signal (wait_queue_t * wq)
+{
+	
+  glthread_t *first_node;
+  thread_t *thread;
+	
+  if (!wq->appln_mutex) return;
+	
+  pthread_mutex_lock(wq->appln_mutex);
+	
+  if (!wq->thread_wait_count) {
+      pthread_mutex_unlock(wq->appln_mutex);
+      return;
+  }
+	
+  if (!wq->priority_flag) {
+	  pthread_cond_signal (&wq->cv);
+  }
+  else {
+	  
+	  first_node = glthread_get_first_node (&wq->priority_wait_queue_head);
+	  
+	  if (!first_node) {
+		  pthread_mutex_unlock(wq->appln_mutex);
+		  return;
+	  }
+	  
+	  thread = wait_glue_to_thread(first_node);
+	  pthread_cond_signal(&thread->cv);
+  }
+  pthread_mutex_unlock(wq->appln_mutex);
+}
+
+void
+wait_queue_broadcast (wait_queue_t * wq) {
+
+	glthread_t *curr;
+	thread_t *thread;
+	
+	if (!wq->appln_mutex) return;
+	
+	pthread_mutex_lock(wq->appln_mutex);
+	
+	if (!wq->thread_wait_count) {
+		pthread_mutex_unlock(wq->appln_mutex);
+		return;
+	}
+	
+	if (!wq->priority_flag) {
+		pthread_cond_broadcast (&wq->cv);
+	}
+	else {
+		
+		ITERATE_GLTHREAD_BEGIN(&wq->priority_wait_queue_head, curr) {
+		
+			thread = wait_glue_to_thread(curr);
+			pthread_cond_signal(&thread->cv);
+  		} ITERATE_GLTHREAD_END(&wq->priority_wait_queue_head, curr);
+	}
+	
+  pthread_mutex_unlock(wq->appln_mutex);
+}
+
+void
+wait_queue_print(wait_queue_t *wq) {
+    
+	glthread_t *curr;
+	thread_t *thread;
+	
+    printf("wq->thread_wait_count = %u\n", wq->thread_wait_count);
+    printf("wq->appl_result = %p\n", wq->appln_mutex);
+	
+	if (0 && wq->priority_flag) {
+	
+		ITERATE_GLTHREAD_BEGIN(&wq->priority_wait_queue_head, curr) {
+			
+			thread = wait_glue_to_thread(curr);
+			thread_lib_print_thread(thread);
+		} ITERATE_GLTHREAD_END(&wq->wait_queue_head, curr);
+	}
+}
+
+
+
+/* Application fn to test wait-Queue library*/
+#if 1
+static wait_queue_t wq;
+
+static bool appl_result = true;
+
+bool
+test_appln_condition_in_mutual_exclusive_way (void *app_arg,
+					      pthread_mutex_t ** mutex)
+{
+
+  static pthread_mutex_t app_mutex;
+  static bool initialized = false;
+
+  if (!initialized) {
+    pthread_mutex_init (&app_mutex, NULL);
+    initialized = true;
+  }
+  
+  *mutex = &app_mutex;
+  return appl_result;
+}
+
+bool
+test_appln_condition_without_lock (void *app_arg)
+{
+  return appl_result;
+}
+
+bool
+appln_cond_test_fn (void *app_arg, pthread_mutex_t **mutex)
+{
+
+  if (mutex) {
+      return test_appln_condition_in_mutual_exclusive_way (app_arg, mutex);
+  }
+  return test_appln_condition_without_lock (app_arg);
+}
+
+void *
+thread_fn_callback (void *arg)
+{
+  thread_t *thread = (thread_t *)arg;
+  printf ("Thread %s invoking wait_queue_test_and_wait( ) \n",
+		  thread->name);
+  wait_queue_test_and_wait (&wq, appln_cond_test_fn, NULL, thread);
+  pthread_exit(NULL);
+  return NULL;
+}
+
+static thread_t *threads[3];
+
+int
+main (int argc, char **argv)
+{
+  wait_queue_init (&wq, true, priority_wq_insert_comp_fn);
+
+  threads[0] = create_thread(0, "th1", THREAD_WRITER);
+  run_thread(threads[0], thread_fn_callback, (void *)threads[0]);
+	
+  threads[1] = create_thread(0, "th2", THREAD_WRITER);
+  run_thread(threads[1], thread_fn_callback, (void *)threads[1]);
+	
+  threads[2] = create_thread(0, "th3", THREAD_WRITER);
+  run_thread(threads[2], thread_fn_callback, (void *)threads[2]);
+	
+  sleep(3);
+	
+	
+  wait_queue_print(&wq);
+  
+  appl_result = false;
+  wait_queue_signal(&wq);
+  sleep(1);
+  wait_queue_print(&wq);
+  wait_queue_signal(&wq);
+  sleep(1);
+  wait_queue_print(&wq);
+  wait_queue_signal(&wq);
+  sleep(1);
+  wait_queue_print(&wq);
+
+  pthread_join (threads[0]->thread, NULL);
+  printf("Thread %s joined\n", threads[0]->name);
+  wait_queue_print(&wq);
+  
+  pthread_join (threads[1]->thread, NULL);
+  printf("Thread %s joined\n", threads[1]->name);
+  wait_queue_print(&wq);
+  
+  pthread_join (threads[2]->thread, NULL);
+  printf("Thread %s joined\n", threads[2]->name);
+  wait_queue_print(&wq);
+  
+  return 0;
+}
+
+#endif
+
+/* Wait Queue Implementation Ends Here */
+
+
+
+
+
+
+
+/* Thread Barrier Implementation Starts here */
+
+void
+thread_barrier_print(th_barrier_t *th_barrier) {
+    
+    printf("th_barrier->max_count = %u\n", th_barrier->max_count);
+    printf("th_barrier->curr_wait_count = %u\n", th_barrier->curr_wait_count);
+    printf("th_barrier->is_ready_again = %s\n", th_barrier->is_ready_again ? "true" : "false");
+}
+
+void
+thread_barrier_init ( th_barrier_t *barrier, uint32_t count) {
+    
+    barrier->max_count = count;
+    barrier->curr_wait_count = 0;
+    pthread_cond_init(&barrier->cv, NULL);
+    pthread_mutex_init(&barrier->mutex, NULL);
+    barrier->is_ready_again = true;
+    pthread_cond_init(&barrier->busy_cv, NULL);
+}
+
+void
+thread_barrier_signal_all ( th_barrier_t *barrier) {
+
+	pthread_mutex_lock (&barrier->mutex);
+
+	if ( barrier->is_ready_again == false ||
+
+        barrier->curr_wait_count == 0 ) {
+		pthread_mutex_unlock (&barrier->mutex);
+		return;
+    }
+
+	pthread_cond_signal(&barrier->cv);
+	pthread_mutex_unlock (&barrier->mutex);	
+}
+
+void
+thread_barrier_barricade ( th_barrier_t *barrier) {
+
+	pthread_mutex_lock (&barrier->mutex);
+
+	if (barrier->is_ready_again == false ) {
+		pthread_cond_wait(&barrier->busy_cv, 
+		                  &barrier->mutex);
+	}
+
+	if ( barrier->curr_wait_count + 1 == barrier->max_count ) {
+
+		barrier->is_ready_again = false;
+		pthread_cond_signal(&barrier->cv);
+		pthread_mutex_unlock (&barrier->mutex);
+		return;
+	}
+
+	barrier->curr_wait_count++;
+	pthread_cond_wait(&barrier->cv, &barrier->mutex);
+	barrier->curr_wait_count--;
+
+	if (barrier->curr_wait_count == 0) {
+		barrier->is_ready_again = true;
+		pthread_cond_broadcast(&barrier->busy_cv);
+    }
+	else {
+		pthread_cond_signal(&barrier->cv);
+	}
+	pthread_mutex_unlock (&barrier->mutex);
+}
+
+/* Thread Barrier Implementation Ends here */
+
+
+
+
+
+
+
+
+
+
+
+
+
+static int
+monitor_wq_comp_default_fn(void *node1, void *node2) {
+	return 1; /* FIFO */
+}
+
+monitor_t *
+init_monitor(monitor_t *monitor,
+			 char *resource_name,
+			 uint16_t n_readers_max_limit,
+			 uint16_t n_writers_max_limit,
+			 int (*monitor_wq_comp_fn_cb)(void *, void *)) {
+			 
+	int (*monitor_wq_comp_fn)(void *, void *);
+	
+	monitor_wq_comp_fn = monitor_wq_comp_fn_cb ?
+							monitor_wq_comp_fn_cb :
+							monitor_wq_comp_default_fn;
+		
+	if(monitor == NULL) {
+		monitor = calloc(1, sizeof(monitor_t));
+	}
+
+	strncpy(monitor->name, resource_name,
+			sizeof(monitor->name));
+
+	pthread_mutex_init(&monitor->monitor_talk_mutex, 0);
+	
+	wait_queue_init(&monitor->reader_thread_wait_q, true, monitor_wq_comp_fn);
+	wait_queue_init(&monitor->writer_thread_wait_q, true, monitor_wq_comp_fn);
+	
+	init_glthread(&monitor->resource_using_threads_q);
+	monitor->resource_status = MON_RES_AVAILABLE;
+	monitor->n_readers_max_limit = n_readers_max_limit;
+	monitor->n_writers_max_limit = n_writers_max_limit;
+	return monitor;
+}
+
+static inline void
+monitor_lock_monitor_talk_mutex(monitor_t *monitor) {
+
+	pthread_mutex_lock(&monitor->monitor_talk_mutex);
+}
+
+static inline void
+monitor_unlock_monitor_talk_mutex(monitor_t *monitor) {
+
+	pthread_mutex_unlock(&monitor->monitor_talk_mutex);
+}
+
+/* 
+   Inspect the Monitor attributes and decide if the resource is availble.Inspect
+   We need monitor itself and a requester thread to take decision on this.
+*/
+
+typedef struct monitor_thread_pkg_ {
+
+	monitor_t *monitor;
+	thread_t *thread;
+} monitor_thread_pkg_t;
+
+static bool
+monitor_is_resource_available(void *arg,
+							  pthread_mutex_t **mutex) {
+
+	uint16_t n_max_accessors;
+	thread_t *requester_thread;
+	
+	monitor_thread_pkg_t *monitor_thread_pkg =
+		(monitor_thread_pkg_t *)arg;
+	
+	monitor_t *monitor = monitor_thread_pkg->monitor;
+	requester_thread = monitor_thread_pkg->thread;
+	
+	/* We need to check if the resource is availble for a requester_thread */
+	
+	/* Lock the monitor state, since we are inspecting the monitor attributes */
+	if (mutex) {
+	   /* WQ specification says, we must return bool from this fn with mutex being
+	   locked */
+		monitor_lock_monitor_talk_mutex(monitor);
+		*mutex = &monitor->monitor_talk_mutex;
+	}
+	
+	n_max_accessors = requester_thread->thread_op == THREAD_READER ?
+						monitor->n_readers_max_limit :
+						monitor->n_writers_max_limit;
+	
+	uint16_t max_curr_user_count = requester_thread->thread_op == THREAD_READER ?
+							monitor->n_curr_readers :
+							monitor->n_curr_writers;
+	
+	switch (monitor->resource_status) {
+			
+		case MON_RES_AVAILABLE:
+			return ((n_max_accessors != 0) && 
+					(max_curr_user_count < n_max_accessors));
+				
+		case MON_RES_BUSY_BY_READER:
+					
+			switch(requester_thread->thread_op) {
+				
+				case THREAD_READER:
+					return ((n_max_accessors != 0) &&
+							(max_curr_user_count < n_max_accessors)); /* dead code */
+				case THREAD_WRITER:
+					return false;
+				default: ;
+			}
+			
+		case MON_RES_BUSY_BY_WRITER:
+			
+			switch(requester_thread->thread_op) {
+				
+				case THREAD_WRITER:
+					return ((n_max_accessors != 0) &&
+							(max_curr_user_count < n_max_accessors)); /* dead code */
+				case THREAD_READER:
+					return false;
+				default: ;
+			}
+	}
+	
+	return true; /* Make compiler happy */ 
+	assert(0);
+}
+
+static bool
+monitor_is_resource_not_available(void *arg,
+							  	  pthread_mutex_t **mutex) {
+	
+	return !monitor_is_resource_available(arg, mutex);
+}
+
+void
+monitor_request_access_permission(
+	monitor_t *monitor,
+	thread_t *requester_thread) {
+
+	thread_t *thread;
+	wait_queue_t *wq;
+	uint16_t n_max_accessors = 0;
+
+	assert(IS_GLTHREAD_LIST_EMPTY(&requester_thread->wait_glue));
+	
+	printf("Thread %s(%d) requesting Monitor %s for Resource accesse\n",
+			requester_thread->name,
+			requester_thread->thread_op,
+			monitor->name);
+
+	n_max_accessors = requester_thread->thread_op == THREAD_READER ?
+						monitor->n_readers_max_limit :
+						monitor->n_writers_max_limit;
+	
+	wq = requester_thread->thread_op == THREAD_READER ?
+						&monitor->reader_thread_wait_q :
+						&monitor->writer_thread_wait_q;
+	
+	monitor_thread_pkg_t monitor_thread_pkg = {monitor, requester_thread};
+	
+	thread = wait_queue_test_and_wait (wq, 
+									   monitor_is_resource_not_available,
+							 		   (void *)&monitor_thread_pkg,
+									   requester_thread);
+	/* 
+	   Lock the monitor since we are not updating the tracking attributes of
+	   the monitor
+	 */
+	monitor_lock_monitor_talk_mutex(monitor);
+	
+		printf("Monitor %s resource available, Thread %s granted Access\n",
+			monitor->name, thread->name);
+	
+		init_glthread(&thread->wait_glue);
+		glthread_add_next(&monitor->resource_using_threads_q, 
+				&thread->wait_glue);
+		
+		uint16_t *max_curr_user_count = thread->thread_op == THREAD_READER ?
+							&monitor->n_curr_readers :
+							&monitor->n_curr_writers;
+	
+		(*max_curr_user_count)++;
+	
+	monitor_unlock_monitor_talk_mutex(monitor);
+}
+	
+void
+monitor_inform_resource_released(
+	 monitor_t *monitor,
+	 thread_t *requester_thread){
+
+	thread_t *next_accessor_thread;
+	glthread_t *next_accessor_thread_glue;
+
+	monitor_lock_monitor_talk_mutex(monitor);
+
+	printf("Thread %s(%d) informing Monitor %s for Resource release\n",
+			requester_thread->name,
+			requester_thread->thread_op,
+			monitor->name);
+
+	remove_glthread(&requester_thread->wait_glue);
+	init_glthread(&requester_thread->wait_glue);
+	
+	switch(requester_thread->thread_op){
+			
+		case THREAD_READER:
+			monitor->n_curr_readers--;
+			if (monitor->reader_thread_wait_q.thread_wait_count) {
+				/* If some reader threads are waiting, signal one of them */
+				wait_queue_signal(&monitor->reader_thread_wait_q);
+			}
+			else if (monitor->writer_thread_wait_q.thread_wait_count) {
+				/* If some writer threads are waiting, broadcast all of them */
+				wait_queue_broadcast(&monitor->writer_thread_wait_q);
+			}
+			
+		case THREAD_WRITER:
+			monitor->n_curr_writers--;
+			if (monitor->writer_thread_wait_q.thread_wait_count) {
+				/* If some writer threads are waiting, signal one of them */
+				wait_queue_signal(&monitor->writer_thread_wait_q);
+			}
+			else if (monitor->reader_thread_wait_q.thread_wait_count) {
+				/* If some reader threads are waiting, broadcast all of them */
+				wait_queue_broadcast(&monitor->reader_thread_wait_q);
+			}
+		default : ;
+	}
+	monitor_unlock_monitor_talk_mutex(monitor);
+}
+
+
+
+
+
+
+
+
