@@ -42,6 +42,7 @@ typedef struct thread_{
     pthread_attr_t attributes;
     thread_op_type_t thread_op;
     glthread_t wait_glue;
+	uint32_t flags;
 } thread_t;
 GLTHREAD_TO_STRUCT(wait_glue_to_thread,
         thread_t, wait_glue);
@@ -340,6 +341,9 @@ void
 monitor_inform_resource_released (
 	monitor_t *monitor,
 	thread_t *requester_thread);
+
+void
+print_monitor_snapshot(monitor_t *monitor);
 
 /* Monitor Implementation Ends Here */
 

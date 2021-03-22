@@ -1009,6 +1009,7 @@ monitor_is_resource_available(void *arg,
 							  pthread_mutex_t **mutex) {
 
 	uint16_t n_max_accessors;
+	bool rc;
 	thread_t *requester_thread;
 	
 	monitor_thread_pkg_t *monitor_thread_pkg =
@@ -1016,6 +1017,8 @@ monitor_is_resource_available(void *arg,
 	
 	monitor_t *monitor = monitor_thread_pkg->monitor;
 	requester_thread = monitor_thread_pkg->thread;
+	
+	rc = false;
 	
 	/* We need to check if the resource is availble for a requester_thread */
 	
@@ -1026,6 +1029,11 @@ monitor_is_resource_available(void *arg,
 		monitor_lock_monitor_talk_mutex(monitor);
 		*mutex = &monitor->monitor_talk_mutex;
 	}
+	
+	printf("Monitor %s checking resource availablity for thread %s\n",
+		monitor->name, requester_thread->name);
+	
+	print_monitor_snapshot(monitor);
 	
 	n_max_accessors = requester_thread->thread_op == THREAD_READER ?
 						monitor->n_readers_max_limit :
@@ -1038,33 +1046,41 @@ monitor_is_resource_available(void *arg,
 	switch (monitor->resource_status) {
 			
 		case MON_RES_AVAILABLE:
-			return (max_curr_user_count < n_max_accessors);
+			rc = (max_curr_user_count < n_max_accessors) ? true : false;
+			break;
 				
 		case MON_RES_BUSY_BY_READER:
 					
 			switch(requester_thread->thread_op) {
 				
 				case THREAD_READER:
-					return (max_curr_user_count < n_max_accessors);
+					rc =  (max_curr_user_count < n_max_accessors) ? true : false;
+					break;
 				case THREAD_WRITER:
-					return false;
+					rc = false;
+					break;
 				default: ;
 			}
+		break;
 			
 		case MON_RES_BUSY_BY_WRITER:
 			
 			switch(requester_thread->thread_op) {
 				
 				case THREAD_WRITER:
-					return (max_curr_user_count < n_max_accessors);
+					rc =  (max_curr_user_count < n_max_accessors) ? true : false;
+					break;
 				case THREAD_READER:
-					return false;
+					rc = false;
+					break;
 				default: ;
 			}
+		break;
+		default : ;
 	}
 	
-	return true; /* Make compiler happy */ 
-	assert(0);
+	printf("Result : Access allowed : %s\n", rc ? "Y" : "N");
+	return rc;
 }
 
 static bool
@@ -1236,6 +1252,21 @@ monitor_inform_resource_released(
 	monitor_unlock_monitor_talk_mutex(monitor);
 }
 
+void
+print_monitor_snapshot(monitor_t *monitor) {
+
+	printf("reader wait q count : %u, max limit : %u, curr readers : %u\n",
+		monitor->reader_thread_wait_q.thread_wait_count,
+		monitor->n_readers_max_limit,
+		monitor->n_curr_readers);
+		
+	printf("writer wait q count : %u, max limit : %u, curr writers : %u\n",
+		monitor->writer_thread_wait_q.thread_wait_count,
+		monitor->n_writers_max_limit,
+		monitor->n_curr_writers);
+}
+
+
 #if 1
 monitor_t *mon;
 
@@ -1273,7 +1304,7 @@ thread_fn(void *arg) {
 int
 main(int argc, char **argv) {
 
-	mon = init_monitor(0, "RT_TABLE", 3, 3, NULL);
+	mon = init_monitor(0, "RT_TABLE", 2, 1, NULL);
 	
 	thread_t *thread1 = create_thread( 0, "Reader1",
 						THREAD_READER);
