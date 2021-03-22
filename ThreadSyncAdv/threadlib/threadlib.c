@@ -989,6 +989,9 @@ init_monitor(monitor_t *monitor,
 	monitor->resource_status = MON_RES_AVAILABLE;
 	monitor->n_readers_max_limit = n_readers_max_limit;
 	monitor->n_writers_max_limit = n_writers_max_limit;
+	
+	monitor->strict_alternation = false;
+	monitor->who_accessed_cs_last = THREAD_ANY;
 	return monitor;
 }
 
@@ -1058,7 +1061,24 @@ monitor_is_resource_available(void *arg,
 			
 		case MON_RES_AVAILABLE:
 			rc = (max_curr_user_count < n_max_accessors) ? true : false;
-			break;
+			
+			/* Handling Strict Alternation */
+			if (monitor->strict_alternation) {
+				
+				if (!rc) break;
+				
+				switch (monitor->who_accessed_cs_last){
+					case THREAD_ANY:
+						break;
+					case THREAD_READER:
+						rc = (requester_thread->thread_op == THREAD_WRITER);
+						break;
+					case THREAD_WRITER:
+						rc = (requester_thread->thread_op == THREAD_READER);
+						break;
+				}
+			}		
+		break;
 				
 		case MON_RES_BUSY_BY_READER:
 					
@@ -1280,6 +1300,17 @@ monitor_set_wq_auto_mutex_lock_behavior(
 }
 
 void
+monitor_set_strict_alternation_behavior(monitor_t *monitor) {
+
+	if (monitor->n_readers_max_limit == 1 &&
+	    monitor->n_writers_max_limit == 1) {
+		monitor->strict_alternation = true;
+		return;
+	}
+	assert(0);
+}
+
+void
 print_monitor_snapshot(monitor_t *monitor) {
 
 	printf("reader wait q count : %u, max limit : %u, curr readers : %u\n",
@@ -1342,7 +1373,7 @@ thread_fn(void *arg) {
 int
 main(int argc, char **argv) {
 
-	mon = init_monitor(0, "RT_TABLE", 2, 1, NULL);
+	mon = init_monitor(0, "RT_TABLE", 0, 0, NULL);
 	
 	thread_t *thread1 = create_thread( 0, "Reader1",
 						THREAD_READER);

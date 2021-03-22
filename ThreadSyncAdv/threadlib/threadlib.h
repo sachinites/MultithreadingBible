@@ -27,7 +27,8 @@
 typedef enum{
 
     THREAD_READER,
-    THREAD_WRITER
+    THREAD_WRITER,
+	THREAD_ANY
 } thread_op_type_t;
 
 typedef struct thread_{
@@ -322,6 +323,15 @@ typedef struct monitor_{
 	/*Stats*/
 	uint16_t switch_from_readers_to_writers;
 	uint16_t switch_from_writers_to_readers;
+	
+	/*
+	  Enable strict alternation, useful to implement strict
+	  producer-consumer thread synch scenarios. This will work only
+	  When  n_readers_max_limit = n_writers_max_limit = 1. By default
+	  it is false.
+	*/
+	bool strict_alternation;
+	thread_op_type_t who_accessed_cs_last;
 } monitor_t;
 
 monitor_t *
@@ -336,6 +346,9 @@ monitor_set_wq_auto_mutex_lock_behavior(
 		monitor_t *monitor,
 		thread_op_type_t thread_type,
 		bool wq_auto_locking_state) ;
+
+void
+monitor_set_strict_alternation_behavior(monitor_t *monitor);
 
 /* fn used by the client thread to request read/write access
  * on a resource. Fn returns if permission is granted,
