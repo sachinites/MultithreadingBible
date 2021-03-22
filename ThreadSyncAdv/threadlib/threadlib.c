@@ -534,11 +534,10 @@ priority_wq_insert_comp_fn(void *new_user_data, void *user_data_from_list) {
 	return 1;
 }
 
-
 void
 wait_queue_init (wait_queue_t * wq, bool priority_flag,
-				int (*insert_cmp_fn)(void *, void *))
-{
+				int (*insert_cmp_fn)(void *, void *)) {
+	
   wq->priority_flag = priority_flag;
   wq->thread_wait_count = 0;
   pthread_cond_init (&wq->cv, NULL);
@@ -548,6 +547,20 @@ wait_queue_init (wait_queue_t * wq, bool priority_flag,
   if (wq->priority_flag) {
 	  assert(wq->insert_cmp_fn);
   }
+  wait_queue_set_auto_unlock_appln_mutex(wq, true);
+}
+
+/* Wait Queue unlocks/releases the application mutex on its own when thread
+   is signalled successfully. In some cases (Monitor Implementation), we want
+   to defer the responsibility to unlock the appln mutex to the application 
+   it-self instead of wait Queue. This API overrides the behavior of the wait-queuesregaring
+   regaring unlocking the appln mutex. Default behavior is wait-queue itself 
+   look after to release the appln mutex when thread is unblocked from wait-queue
+ */
+void
+wait_queue_set_auto_unlock_appln_mutex(wait_queue_t *wq, bool state) {
+
+	wq->auto_unlock_appln_mutex = state;
 }
 
 /* All the majic of the Wait-Queue Thread-Synch Data structure lies in this
@@ -650,19 +663,13 @@ wait_queue_test_and_wait (wait_queue_t * wq,
          to test the predicate without locking any mutex */
       should_block = wait_queue_block_fn_cb (arg, NULL);
     }
-
-  if (wq->thread_wait_count == 0) {
-     	wq->appln_mutex = NULL;
-	  	printf("curr_thread = %s, wq = %p, wq->appln_mutex = %p\n",
-			   curr_thread->name, wq, wq->appln_mutex);
-  }
-  	
-  if ((wq->thread_wait_count && !wq->appln_mutex) ||
-	   (!wq->thread_wait_count && wq->appln_mutex)) {
-	  assert(0);
-  }
-	
-  pthread_mutex_unlock (locked_appln_mutex);
+  
+   /* The mutex must be unlocked by the application after taking the appropriate
+      action on the thread which is signalled
+	  */
+  	if (wq->auto_unlock_appln_mutex){
+  		pthread_mutex_unlock (locked_appln_mutex);
+  	}
 
   return return_thread;
 }
@@ -800,6 +807,7 @@ thread_fn_callback (void *arg)
   printf ("Thread %s invoking wait_queue_test_and_wait( ) \n",
 		  thread->name);
   wait_queue_test_and_wait (&wq, appln_cond_test_fn, NULL, thread);
+  pthread_mutex_unlock(&wq->appln_mutex);
   pthread_exit(NULL);
   return NULL;
 }
@@ -974,6 +982,9 @@ init_monitor(monitor_t *monitor,
 	wait_queue_init(&monitor->reader_thread_wait_q, true, monitor_wq_comp_fn);
 	wait_queue_init(&monitor->writer_thread_wait_q, true, monitor_wq_comp_fn);
 	
+	monitor_set_wq_auto_mutex_lock_behavior(monitor, THREAD_WRITER, false);
+	monitor_set_wq_auto_mutex_lock_behavior(monitor, THREAD_READER, false);
+	
 	init_glthread(&monitor->resource_using_threads_q);
 	monitor->resource_status = MON_RES_AVAILABLE;
 	monitor->n_readers_max_limit = n_readers_max_limit;
@@ -1141,38 +1152,43 @@ monitor_request_access_permission(
 									   monitor_is_resource_not_available,
 							 		   (void *)&monitor_thread_pkg,
 									   requester_thread);
-	/* 
-	   Lock the monitor since we are not updating the tracking attributes of
-	   the monitor
-	 */
-	monitor_lock_monitor_talk_mutex(monitor);
 	
-		printf("Monitor %s resource available, Thread %s granted Access\n",
+	/* 
+		Monitor is already locked here. Note that Monitor appears as appln
+		to Monitor-owned Wait Queues.
+	*/
+	
+	printf("Monitor %s resource available, Thread %s granted Access\n",
 			monitor->name, thread->name);
 	
-		init_glthread(&thread->wait_glue);
-		glthread_add_next(&monitor->resource_using_threads_q, 
+	init_glthread(&thread->wait_glue);
+	glthread_add_next(&monitor->resource_using_threads_q, 
 				&thread->wait_glue);
 		
-		uint16_t *max_curr_user_count = thread->thread_op == THREAD_READER ?
+	uint16_t *max_curr_user_count = thread->thread_op == THREAD_READER ?
 							&monitor->n_curr_readers :
 							&monitor->n_curr_writers;
 	
-		uint16_t *switch_count = thread->thread_op == THREAD_READER ?
+	uint16_t *switch_count = thread->thread_op == THREAD_READER ?
 							&monitor->switch_from_writers_to_readers :
 							&monitor->switch_from_readers_to_writers;
 	
-		(*max_curr_user_count)++;
-		printf("No of accessors increased to %u\n", *max_curr_user_count);
-		monitor_set_resource_status (monitor, thread);
+	(*max_curr_user_count)++;
+	printf("No of accessors increased to %u\n", *max_curr_user_count);
+	monitor_set_resource_status (monitor, thread);
 	
-		if (*max_curr_user_count == 1) {
-			(*switch_count)++;
-			printf("Monitor Switch count = [%u %u]\n",
+	if (*max_curr_user_count == 1) {
+		(*switch_count)++;
+		printf("Monitor Switch count = [%u %u]\n",
 				  monitor->switch_from_readers_to_writers,
 				  monitor->switch_from_writers_to_readers);
-		}
-	monitor_unlock_monitor_talk_mutex(monitor);
+	}
+		
+	/* Unlock the application mutex manually, here we are unlocking
+		the monitor's talk mutex'*/
+	if (!wq->auto_unlock_appln_mutex) {
+		pthread_mutex_unlock(wq->appln_mutex);
+	}
 }
 	
 void
@@ -1231,8 +1247,6 @@ monitor_inform_resource_released(
 			}
 			
 			if (monitor->writer_thread_wait_q.thread_wait_count) {
-			
-				printf("Entry = %u\n", monitor->writer_thread_wait_q.thread_wait_count);
 				/* If some writer threads are waiting, signal one of them */
 				printf("# of Writer thread waiting = %u, "
 					   "Sending Signal to another Writer thread\n",
@@ -1253,6 +1267,19 @@ monitor_inform_resource_released(
 }
 
 void
+monitor_set_wq_auto_mutex_lock_behavior(
+		monitor_t *monitor,
+		thread_op_type_t thread_type,
+		bool wq_auto_locking_state) {
+	
+	wait_queue_t *wq = (thread_type == THREAD_WRITER) ?
+				&monitor->writer_thread_wait_q :
+				&monitor->reader_thread_wait_q;
+	
+	wait_queue_set_auto_unlock_appln_mutex(wq, wq_auto_locking_state);
+}
+
+void
 print_monitor_snapshot(monitor_t *monitor) {
 
 	printf("reader wait q count : %u, max limit : %u, curr readers : %u\n",
@@ -1264,6 +1291,15 @@ print_monitor_snapshot(monitor_t *monitor) {
 		monitor->writer_thread_wait_q.thread_wait_count,
 		monitor->n_writers_max_limit,
 		monitor->n_curr_writers);
+}
+
+void
+monitor_sanity_check(monitor_t *monitor) {
+
+	if ((monitor->n_curr_readers > monitor->n_readers_max_limit) ||
+		(monitor->n_curr_writers > monitor->n_writers_max_limit)) {
+			assert(0);
+	}
 }
 
 
@@ -1287,6 +1323,8 @@ thread_fn(void *arg) {
 			thread->name);
 	
 		//sleep(1);
+		print_monitor_snapshot(mon);
+		monitor_sanity_check(mon);
 
 		
 		printf("Thread %s informing Resource release\n",

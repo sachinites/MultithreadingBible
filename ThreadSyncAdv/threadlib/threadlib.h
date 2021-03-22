@@ -198,12 +198,17 @@ typedef struct wait_queue_
   glthread_t priority_wait_queue_head;  
   /* Comparison fn to insert the threads in the PQ */
   int (*insert_cmp_fn)(void *, void *);
+  /* Unlock application mutex automatically, true by default */
+  bool auto_unlock_appln_mutex;
 } wait_queue_t;
 
 
 void
 wait_queue_init (wait_queue_t * wq, bool priority_flag,
 				 int (*insert_cmp_fn)(void *, void *));
+
+void
+wait_queue_set_auto_unlock_appln_mutex(wait_queue_t *wq, bool state);
 
 thread_t *
 wait_queue_test_and_wait (wait_queue_t *wq,
@@ -326,6 +331,12 @@ init_monitor(monitor_t *monitor,
 			 uint16_t n_writers_max_limit,
 			 int (*monitor_wq_comp_fn_cb)(void *, void *));
 
+void
+monitor_set_wq_auto_mutex_lock_behavior(
+		monitor_t *monitor,
+		thread_op_type_t thread_type,
+		bool wq_auto_locking_state) ;
+
 /* fn used by the client thread to request read/write access
  * on a resource. Fn returns if permission is granted,
  * else the fn is blocked and stay blocked until request
@@ -344,6 +355,9 @@ monitor_inform_resource_released (
 
 void
 print_monitor_snapshot(monitor_t *monitor);
+
+void
+monitor_sanity_check(monitor_t *monitor);
 
 /* Monitor Implementation Ends Here */
 
