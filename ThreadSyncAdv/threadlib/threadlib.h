@@ -211,10 +211,10 @@ wait_queue_test_and_wait (wait_queue_t *wq,
 			  thread_t *thread);
 
 void
-wait_queue_signal (wait_queue_t *wq);
+wait_queue_signal (wait_queue_t *wq, bool lock_mutex);
 
 void
-wait_queue_broadcast (wait_queue_t *wq);
+wait_queue_broadcast (wait_queue_t *wq, bool lock_mutex);
 
 void
 wait_queue_print(wait_queue_t *wq);
@@ -312,6 +312,10 @@ typedef struct monitor_{
 	/* Current no of Concurrent Readers/Writers accessing the resource */
 	uint16_t n_curr_readers;
 	uint16_t n_curr_writers;
+	
+	/*Stats*/
+	uint16_t switch_from_readers_to_writers;
+	uint16_t switch_from_writers_to_readers;
 } monitor_t;
 
 monitor_t *

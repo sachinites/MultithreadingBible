@@ -564,6 +564,7 @@ wait_queue_test_and_wait (wait_queue_t * wq,
 			  thread_t *curr_thread) {
 	
   bool should_block;
+  glthread_t *node;
   thread_t *return_thread;
   pthread_mutex_t *locked_appln_mutex = NULL;
 	
@@ -590,6 +591,8 @@ wait_queue_test_and_wait (wait_queue_t * wq,
       /* Catch the application mutex, WQ would need this for signaling
       the blocked threads on WQ*/
       wq->appln_mutex = locked_appln_mutex;
+	  printf("curr_thread = %s, wq = %p, wq->appln_mutex cached = %p\n",
+			 curr_thread->name, wq, wq->appln_mutex);
     }
   else
     {
@@ -600,7 +603,10 @@ wait_queue_test_and_wait (wait_queue_t * wq,
   the calling thread by invoking pthread_cond_wait*/
   while (should_block) {
 	  
+	  assert(wq->appln_mutex);
       wq->thread_wait_count++;
+	   printf("Thread %s blocked on wq, wq = %p, thread_wait_count incre to %u\n",
+			  curr_thread->name, wq, wq->thread_wait_count);
 	  
 	  /* If this is normal WQ, then block all threads on a common CV */
 	  if (!wq->priority_flag) {
@@ -615,15 +621,25 @@ wait_queue_test_and_wait (wait_queue_t * wq,
                                     &curr_thread->wait_glue,
                                     wq->insert_cmp_fn,
                                     (size_t)&(((thread_t *)0)->wait_glue));
-	  
+	  	  printf("Thread %s blocked on wait Queue, wq->thread_wait_count = %u\n",
+				 curr_thread->name, wq->thread_wait_count);
       	  pthread_cond_wait (&curr_thread->cv, wq->appln_mutex);
 	  }
       wq->thread_wait_count--;
 	  
+	  if (curr_thread) {
+	  		printf("Thread %s un-blocked from wait Queue, wq->thread_wait_count reduced to = %u\n",
+				 	curr_thread->name, wq->thread_wait_count);
+	  }
+	  
 	  if (wq->priority_flag) {
-		  curr_thread = wait_glue_to_thread(
-			  				dequeue_glthread_first(
-								&wq->priority_wait_queue_head));
+		  remove_glthread(&curr_thread->wait_glue);
+		  /*
+		  node = dequeue_glthread_first(
+					&wq->priority_wait_queue_head);
+		  assert(node);
+		  curr_thread = wait_glue_to_thread(node);
+		  */
 		  return_thread = curr_thread;
 	  }
       /* The thread wakes up, retest the predicate again to 
@@ -636,26 +652,36 @@ wait_queue_test_and_wait (wait_queue_t * wq,
     }
 
   if (wq->thread_wait_count == 0) {
-      wq->appln_mutex = NULL;
+     	wq->appln_mutex = NULL;
+	  	printf("curr_thread = %s, wq = %p, wq->appln_mutex = %p\n",
+			   curr_thread->name, wq, wq->appln_mutex);
   }
-  
+  	
+  if ((wq->thread_wait_count && !wq->appln_mutex) ||
+	   (!wq->thread_wait_count && wq->appln_mutex)) {
+	  assert(0);
+  }
+	
   pthread_mutex_unlock (locked_appln_mutex);
+
   return return_thread;
 }
 
 void
-wait_queue_signal (wait_queue_t * wq)
+wait_queue_signal (wait_queue_t * wq, bool lock_mutex)
 {
 	
   glthread_t *first_node;
   thread_t *thread;
 	
-  if (!wq->appln_mutex) return;
-	
-  pthread_mutex_lock(wq->appln_mutex);
+  if (lock_mutex && !wq->appln_mutex) return;
+
+  if (lock_mutex) {
+ 	 pthread_mutex_lock(wq->appln_mutex);
+  }
 	
   if (!wq->thread_wait_count) {
-      pthread_mutex_unlock(wq->appln_mutex);
+	  if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
       return;
   }
 	
@@ -667,28 +693,28 @@ wait_queue_signal (wait_queue_t * wq)
 	  first_node = glthread_get_first_node (&wq->priority_wait_queue_head);
 	  
 	  if (!first_node) {
-		  pthread_mutex_unlock(wq->appln_mutex);
+		  if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 		  return;
 	  }
 	  
 	  thread = wait_glue_to_thread(first_node);
 	  pthread_cond_signal(&thread->cv);
   }
-  pthread_mutex_unlock(wq->appln_mutex);
+  if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 }
 
 void
-wait_queue_broadcast (wait_queue_t * wq) {
+wait_queue_broadcast (wait_queue_t * wq, bool lock_mutex) {
 
 	glthread_t *curr;
 	thread_t *thread;
 	
-	if (!wq->appln_mutex) return;
+	if (lock_mutex && !wq->appln_mutex) return;
 	
-	pthread_mutex_lock(wq->appln_mutex);
+	if (lock_mutex) pthread_mutex_lock(wq->appln_mutex);
 	
 	if (!wq->thread_wait_count) {
-		pthread_mutex_unlock(wq->appln_mutex);
+		if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 		return;
 	}
 	
@@ -704,7 +730,7 @@ wait_queue_broadcast (wait_queue_t * wq) {
   		} ITERATE_GLTHREAD_END(&wq->priority_wait_queue_head, curr);
 	}
 	
-  pthread_mutex_unlock(wq->appln_mutex);
+  if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 }
 
 void
@@ -729,7 +755,7 @@ wait_queue_print(wait_queue_t *wq) {
 
 
 /* Application fn to test wait-Queue library*/
-#if 1
+#if 0
 static wait_queue_t wq;
 
 static bool appl_result = true;
@@ -916,7 +942,7 @@ thread_barrier_barricade ( th_barrier_t *barrier) {
 
 
 
-
+/* Monitor Implementation Starts here */
 
 static int
 monitor_wq_comp_default_fn(void *node1, void *node2) {
@@ -1012,16 +1038,14 @@ monitor_is_resource_available(void *arg,
 	switch (monitor->resource_status) {
 			
 		case MON_RES_AVAILABLE:
-			return ((n_max_accessors != 0) && 
-					(max_curr_user_count < n_max_accessors));
+			return (max_curr_user_count < n_max_accessors);
 				
 		case MON_RES_BUSY_BY_READER:
 					
 			switch(requester_thread->thread_op) {
 				
 				case THREAD_READER:
-					return ((n_max_accessors != 0) &&
-							(max_curr_user_count < n_max_accessors)); /* dead code */
+					return (max_curr_user_count < n_max_accessors);
 				case THREAD_WRITER:
 					return false;
 				default: ;
@@ -1032,8 +1056,7 @@ monitor_is_resource_available(void *arg,
 			switch(requester_thread->thread_op) {
 				
 				case THREAD_WRITER:
-					return ((n_max_accessors != 0) &&
-							(max_curr_user_count < n_max_accessors)); /* dead code */
+					return (max_curr_user_count < n_max_accessors);
 				case THREAD_READER:
 					return false;
 				default: ;
@@ -1119,18 +1142,27 @@ monitor_request_access_permission(
 							&monitor->n_curr_readers :
 							&monitor->n_curr_writers;
 	
+		uint16_t *switch_count = thread->thread_op == THREAD_READER ?
+							&monitor->switch_from_writers_to_readers :
+							&monitor->switch_from_readers_to_writers;
+	
 		(*max_curr_user_count)++;
+		printf("No of accessors increased to %u\n", *max_curr_user_count);
 		monitor_set_resource_status (monitor, thread);
-		monitor_unlock_monitor_talk_mutex(monitor);
+	
+		if (*max_curr_user_count == 1) {
+			(*switch_count)++;
+			printf("Monitor Switch count = [%u %u]\n",
+				  monitor->switch_from_readers_to_writers,
+				  monitor->switch_from_writers_to_readers);
+		}
+	monitor_unlock_monitor_talk_mutex(monitor);
 }
 	
 void
 monitor_inform_resource_released(
 	 monitor_t *monitor,
 	 thread_t *requester_thread){
-
-	thread_t *next_accessor_thread;
-	glthread_t *next_accessor_thread_glue;
 
 	monitor_lock_monitor_talk_mutex(monitor);
 
@@ -1145,41 +1177,135 @@ monitor_inform_resource_released(
 	switch(requester_thread->thread_op){
 			
 		case THREAD_READER:
+			assert(monitor->n_curr_readers);
 			monitor->n_curr_readers--;
-			if (monitor->reader_thread_wait_q.thread_wait_count) {
-				/* If some reader threads are waiting, signal one of them */
-				wait_queue_signal(&monitor->reader_thread_wait_q);
-			}
-			else if (monitor->writer_thread_wait_q.thread_wait_count) {
-				/* If some writer threads are waiting, broadcast all of them */
-				wait_queue_broadcast(&monitor->writer_thread_wait_q);
-			}
-			else if (monitor->n_curr_readers == 0) {
-				/* If there are nobody in the waiting list, and the last reader thread
-				   has also released the resource, mark the resource as available*/
+			printf("# of readers accessing resource reduced to %u\n",
+				   monitor->n_curr_readers);
+			
+			if (monitor->n_curr_readers == 0) {
+				printf("Nobody using the resource, marking the resource Available\n");
 				monitor_set_resource_status(monitor, NULL);
 			}
 			
+			if (monitor->reader_thread_wait_q.thread_wait_count) {
+				/* If some reader threads are waiting, signal one of them */
+				printf("# of Reader thread waiting = %u, "
+					   "Sending Signal to another Reader thread\n",
+					  monitor->reader_thread_wait_q.thread_wait_count);
+				wait_queue_signal(&monitor->reader_thread_wait_q, false);
+			}
+			else if (monitor->n_curr_readers == 0 &&
+					 monitor->writer_thread_wait_q.thread_wait_count) {
+				/* If some writer threads are waiting, broadcast all of them */
+				printf("# of Writer thread waiting = %u, "
+					   "Broadcasting Signal to all Writer threads\n",
+					  monitor->writer_thread_wait_q.thread_wait_count);
+				wait_queue_broadcast(&monitor->writer_thread_wait_q, false);
+			}
+		break;
 		case THREAD_WRITER:
+			assert(monitor->n_curr_writers);
 			monitor->n_curr_writers--;
-			if (monitor->writer_thread_wait_q.thread_wait_count) {
-				/* If some writer threads are waiting, signal one of them */
-				wait_queue_signal(&monitor->writer_thread_wait_q);
-			}
-			else if (monitor->reader_thread_wait_q.thread_wait_count) {
-				/* If some reader threads are waiting, broadcast all of them */
-				wait_queue_broadcast(&monitor->reader_thread_wait_q);
-			}
-			else if (monitor->n_curr_writers == 0) {
-				/* If there are nobody in the waiting list, and the last writer thread
-				   has also released the resource, mark the resource as availble*/
+			printf("# of writers accessing resource reduced to %u\n",
+				   monitor->n_curr_writers);
+			
+			if (monitor->n_curr_writers == 0) {
+				printf("Nobody using the resource, marking the resource Available\n");
 				monitor_set_resource_status(monitor, NULL);
+			}
+			
+			if (monitor->writer_thread_wait_q.thread_wait_count) {
+			
+				printf("Entry = %u\n", monitor->writer_thread_wait_q.thread_wait_count);
+				/* If some writer threads are waiting, signal one of them */
+				printf("# of Writer thread waiting = %u, "
+					   "Sending Signal to another Writer thread\n",
+					  monitor->writer_thread_wait_q.thread_wait_count);
+				wait_queue_signal(&monitor->writer_thread_wait_q, false);
+			}
+			else if (monitor->n_curr_writers == 0 &&
+					 monitor->reader_thread_wait_q.thread_wait_count) {
+				/* If some reader threads are waiting, broadcast all of them */
+				printf("# of Reader threads waiting = %u, "
+					   "Broadcasting Signal to all Reader threads\n",
+					  monitor->reader_thread_wait_q.thread_wait_count);
+				wait_queue_broadcast(&monitor->reader_thread_wait_q, false);
 			}
 		default : ;
 	}
 	monitor_unlock_monitor_talk_mutex(monitor);
 }
 
+#if 1
+monitor_t *mon;
+
+void *
+thread_fn(void *arg) {
+
+	thread_t *thread = (thread_t *)arg;
+
+	while(1){
+	
+		printf("Thread %s Requesting Resource access\n",
+			thread->name);
+			
+		monitor_request_access_permission(
+			mon, thread);
+
+		printf("Thread %s Accessing Resource\n",
+			thread->name);
+	
+		//sleep(1);
+
+		
+		printf("Thread %s informing Resource release\n",
+			thread->name);
+			
+		monitor_inform_resource_released(
+			mon, thread);
+			
+		printf("Thread %s Done with the Resource\n",
+			thread->name);
+	}
+}
+
+
+int
+main(int argc, char **argv) {
+
+	mon = init_monitor(0, "RT_TABLE", 3, 3, NULL);
+	
+	thread_t *thread1 = create_thread( 0, "Reader1",
+						THREAD_READER);
+	run_thread(thread1, thread_fn, thread1);
+	
+	thread_t *thread2 = create_thread( 0, "Reader2",
+						THREAD_READER);
+	run_thread(thread2, thread_fn, thread2);
+	
+	thread_t *thread3 = create_thread( 0, "Writer1",
+						THREAD_WRITER);
+	run_thread(thread3, thread_fn, thread3);
+	
+	thread_t *thread4 = create_thread( 0, "Writer2",
+						THREAD_WRITER);
+	run_thread(thread4, thread_fn, thread4);
+	
+	thread_t *thread5 = create_thread( 0, "Writer3",
+						THREAD_WRITER);
+	run_thread(thread5, thread_fn, thread5);
+	
+	thread_t *thread6 = create_thread( 0, "Reader3",
+						THREAD_READER);
+	run_thread(thread6, thread_fn, thread6);
+
+	pthread_exit(0);
+	return 0;
+}
+
+#endif
+
+/* Monitor Implementation Ends here */
 
 
 
