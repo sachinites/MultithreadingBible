@@ -1067,6 +1067,20 @@ monitor_is_resource_available(void *arg,
 				
 				if (!rc) break;
 				
+				if (monitor->who_accessed_cs_last != THREAD_ANY) {
+					printf("strict_alternation : Last accessed by %s, current thread %s\n",
+					  	monitor->who_accessed_cs_last == THREAD_READER ?
+					  	"THREAD_READER" : "THREAD_WRITER",
+					  	requester_thread->thread_op == THREAD_READER ?
+					  	"THREAD_READER" : "THREAD_WRITER");
+				}
+				else {
+					printf("strict_alternation : Last accessed by THREAD_ANY, "
+						   "current thread %s\n",
+						   requester_thread->thread_op == THREAD_READER ?
+					  		"THREAD_READER" : "THREAD_WRITER");
+				}
+				
 				switch (monitor->who_accessed_cs_last){
 					case THREAD_ANY:
 						break;
@@ -1131,6 +1145,8 @@ monitor_set_resource_status (monitor_t *monitor,
 		return;
 	}
 	
+	monitor->who_accessed_cs_last = access_granted_thread->thread_op;
+	
 	switch(access_granted_thread->thread_op) {
 			
 		case THREAD_READER:
@@ -1140,6 +1156,14 @@ monitor_set_resource_status (monitor_t *monitor,
 			monitor->resource_status = MON_RES_BUSY_BY_WRITER;
 		default: ;
 	}
+	
+	printf("monitor->resource_status set to %s, " 
+		    "monitor->who_accessed_cs_last set to %s\n",
+		 	 monitor->resource_status == MON_RES_BUSY_BY_WRITER ?
+		  	"MON_RES_BUSY_BY_WRITER" : "MON_RES_BUSY_BY_READER",
+		   	 monitor->who_accessed_cs_last == THREAD_ANY ? "THREAD_ANY" : 
+		     monitor->who_accessed_cs_last == THREAD_READER ?
+		    "THREAD_READER" : "THREAD_WRITER");
 }
 
 void
@@ -1334,7 +1358,7 @@ monitor_sanity_check(monitor_t *monitor) {
 }
 
 
-#if 1
+#if 0
 monitor_t *mon;
 
 void *
@@ -1399,6 +1423,63 @@ main(int argc, char **argv) {
 						THREAD_READER);
 	run_thread(thread6, thread_fn, thread6);
 
+	pthread_exit(0);
+	return 0;
+}
+
+#endif
+
+/* Using monitor to demonstrate producer consumer */
+#if 1
+monitor_t *mon;
+
+void *
+thread_fn(void *arg) {
+
+	thread_t *thread = (thread_t *)arg;
+
+	while(1){
+	
+		printf("Thread %s Requesting Resource access\n",
+			thread->name);
+			
+		monitor_request_access_permission(
+			mon, thread);
+
+		printf("Thread %s Accessing Resource\n",
+			thread->name);
+	
+		//sleep(1);
+		print_monitor_snapshot(mon);
+		monitor_sanity_check(mon);
+
+		
+		printf("Thread %s informing Resource release\n",
+			thread->name);
+			
+		monitor_inform_resource_released(
+			mon, thread);
+			
+		printf("Thread %s Done with the Resource\n",
+			thread->name);
+	}
+}
+
+
+int
+main(int argc, char **argv) {
+
+	mon = init_monitor(0, "SHARED_BUFFER", 1, 1, NULL);
+	monitor_set_strict_alternation_behavior(mon);
+	
+	thread_t *thread1 = create_thread( 0, "Consumer",
+						THREAD_READER);
+	run_thread(thread1, thread_fn, thread1);
+	
+	thread_t *thread2 = create_thread( 0, "Producer",
+						THREAD_WRITER);
+	run_thread(thread2, thread_fn, thread2);
+	
 	pthread_exit(0);
 	return 0;
 }
