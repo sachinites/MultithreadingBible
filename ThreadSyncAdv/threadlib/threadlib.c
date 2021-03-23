@@ -3,18 +3,25 @@
  *
  *       Filename:  threadlib.c
  *
- *    Description:  
+ *    Description:  This file implements the commonly used data structures and routines for
+ 	for thread synchronization
  *
  *        Version:  1.0
- *        Created:  11/02/2020 01:20:30 AM
+ *        Created:  03/23/2021 01:20:30 AM
  *       Revision:  none
  *       Compiler:  gcc
  *
  *         Author:  ABHISHEK SAGAR (), sachinites@gmail.com
- *   Organization:  Juniper Networks
+ *   Organization:  Juniper Networks ( Apr 2017 - Mar 2021)
+ *					Cisco (Mar 2021 - Present)
  *
  * =====================================================================================
  */
+
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -78,6 +85,12 @@ thread_lib_print_thread(thread_t *thread) {
 }
 
 
+
+
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -332,6 +345,11 @@ main(int argc, char **argv) {
 
 
 
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
+
 
 
 
@@ -512,6 +530,11 @@ Implement the below scheme between client and server as follows :
 
 
 
+
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -868,6 +891,17 @@ main (int argc, char **argv)
 
 
 
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
+
+
+
+
+
+
+
 
 /* Thread Barrier Implementation Starts here */
 
@@ -947,6 +981,19 @@ thread_barrier_barricade ( th_barrier_t *barrier) {
 
 
 
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
+
+
+
+
+
+
+
+
+
 
 
 
@@ -985,7 +1032,7 @@ init_monitor(monitor_t *monitor,
 	monitor_set_wq_auto_mutex_lock_behavior(monitor, THREAD_WRITER, false);
 	monitor_set_wq_auto_mutex_lock_behavior(monitor, THREAD_READER, false);
 	
-	init_glthread(&monitor->resource_using_threads_q);
+	init_glthread(&monitor->active_threads_in_cs);
 	monitor->resource_status = MON_RES_AVAILABLE;
 	monitor->n_readers_max_limit = n_readers_max_limit;
 	monitor->n_writers_max_limit = n_writers_max_limit;
@@ -1206,7 +1253,7 @@ monitor_request_access_permission(
 			monitor->name, thread->name);
 	
 	init_glthread(&thread->wait_glue);
-	glthread_add_next(&monitor->resource_using_threads_q, 
+	glthread_add_next(&monitor->active_threads_in_cs, 
 				&thread->wait_glue);
 		
 	uint16_t *max_curr_user_count = thread->thread_op == THREAD_READER ?
@@ -1489,7 +1536,10 @@ main(int argc, char **argv) {
 /* Monitor Implementation Ends here */
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 

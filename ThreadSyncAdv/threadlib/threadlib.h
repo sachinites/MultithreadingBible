@@ -3,18 +3,25 @@
  *
  *       Filename:  threadlib.h
  *
- *    Description:  
+ *    Description:  This file defines the commonly used data structures and routines for
+ 	for thread synchronization
  *
  *        Version:  1.0
- *        Created:  11/02/2020 01:15:21 AM
+ *        Created:  03/23/2021 01:20:30 AM
  *       Revision:  none
  *       Compiler:  gcc
  *
  *         Author:  ABHISHEK SAGAR (), sachinites@gmail.com
- *   Organization:  Juniper Networks
+ *   Organization:  Juniper Networks ( Apr 2017 - Mar 2021)
+ *					Cisco (Mar 2021 - Present)
  *
  * =====================================================================================
  */
+
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 #ifndef __THREAD_LIB__
 #define __THREAD_LIB__
@@ -62,7 +69,10 @@ thread_lib_print_thread(thread_t *thread);
 
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -115,7 +125,10 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
 
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -168,7 +181,10 @@ event_pair_client_destroy (event_pair_t *ep);
 
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -232,7 +248,10 @@ wait_queue_print(wait_queue_t *wq);
 
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -272,7 +291,10 @@ thread_barrier_barricade ( th_barrier_t *barrier);
 
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
@@ -305,7 +327,7 @@ typedef struct monitor_{
 	/* List of Threads using the resource currently,
      * Multiple threads if Multiple Readers are accessing,
      * Only one thread in list of it is a Writer thread*/
-	glthread_t resource_using_threads_q;
+	glthread_t active_threads_in_cs;
 
 	/* Status of the resource */
 	resource_status_t resource_status;
@@ -378,7 +400,10 @@ monitor_sanity_check(monitor_t *monitor);
 
 
 
-
+/*
+  Visit : www.csepracticals.com for more courses and projects
+  Join Telegram Grp : telecsepracticals
+*/
 
 
 
