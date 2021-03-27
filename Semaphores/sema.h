@@ -21,6 +21,13 @@
 
 typedef struct sema_ sema_t;
 
+struct sema_ {
+
+    int permit_counter;
+    pthread_cond_t cv;
+    pthread_mutex_t mutex;
+};
+
 sema_t *
 sema_get_new_semaphore();
 
