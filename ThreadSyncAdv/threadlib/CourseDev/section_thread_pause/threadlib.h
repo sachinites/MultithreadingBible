@@ -30,17 +30,25 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* When the thread is running and doing its work as normal */
 #define THREAD_F_RUNNING            (1 << 0)
+/* When the thread has been marked to pause, but not paused yet */
 #define THREAD_F_MARKED_FOR_PAUSE   (1 << 1)
+/* When thread is blocked (paused) */
 #define THREAD_F_PAUSED             (1 << 2)
+/* When thread is blocked on CV for reason other than paused */
 #define THREAD_F_BLOCKED            (1 << 3)
 
 typedef struct thread_{
-
+	/*name of the thread */
     char name[32];
+	/* is execution unit has been created*/
     bool thread_created;
+	/* pthread handle */
     pthread_t thread;
+	/* thread fn arg */
     void *arg;
+	/* thread fn */
     void *(*thread_fn)(void *);
     /* Fn to be invoked just before pauing the thread */
     void *(*thread_pause_fn)(void *);
@@ -81,7 +89,7 @@ void
 thread_resume(thread_t *thread);
 
 void
-thread_testpause(thread_t *thread);
+thread_test_and_pause(thread_t *thread);
 
 #endif /* __THREAD_LIB__  */
 

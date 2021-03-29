@@ -35,7 +35,7 @@ write_into_file_fn(void *arg) {
 	while(1){
 		printf("Thread writing into file\n");
 		sleep(1);
-		thread_testpause(thread);
+		thread_test_and_pause(thread);
 	}
 	return NULL;
 }

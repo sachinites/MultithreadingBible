@@ -101,7 +101,7 @@ thread_resume(thread_t *thread) {
 }
 
 void
-thread_testpause(thread_t *thread) {
+thread_test_and_pause(thread_t *thread) {
 
     pthread_mutex_lock(&thread->state_mutex);
 
