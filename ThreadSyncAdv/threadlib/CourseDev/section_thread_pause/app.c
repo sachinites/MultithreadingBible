@@ -18,5 +18,59 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "threadlib.h"
 
+void *pause_sample_fn(void *arg) {
+	
+	printf("%s invoked\n", __FUNCTION__);
+	return NULL;
+}
+
+void *
+write_into_file_fn(void *arg) {
+
+	thread_t *thread = (thread_t *)arg;
+	
+	while(1){
+		printf("Thread writing into file\n");
+		sleep(1);
+		thread_testpause(thread);
+	}
+	return NULL;
+}
+
+int
+main(int argc, char **argv) {
+
+	thread_t *console_writer_thread = thread_create(0, "file-writer");
+	
+	thread_set_thread_attribute_joinable_or_detached(console_writer_thread, false);
+	
+	thread_set_pause_fn(console_writer_thread, pause_sample_fn, (void *)console_writer_thread);
+	
+	thread_run(console_writer_thread, write_into_file_fn, console_writer_thread);
+
+	int choice;
+	
+	do {
+		printf("1. pause\n");
+		printf("2. resume\n");
+
+		printf("Enter choice: ");
+		scanf("%d", &choice);
+		
+		switch(choice) {
+			case 1:
+				thread_pause(console_writer_thread);
+				break;
+			case 2:
+				thread_resume(console_writer_thread);
+				break;
+			default:
+				break;
+		}
+	} while(1);
+	
+	return 0;
+}

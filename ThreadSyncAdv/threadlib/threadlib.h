@@ -354,6 +354,10 @@ typedef struct monitor_{
 	*/
 	bool strict_alternation;
 	thread_op_type_t who_accessed_cs_last;
+	
+	/* Flag set when monitor needs to be shut-down */
+	bool shutdown;
+	bool is_deleted;
 } monitor_t;
 
 monitor_t *
@@ -393,6 +397,9 @@ print_monitor_snapshot(monitor_t *monitor);
 
 void
 monitor_sanity_check(monitor_t *monitor);
+
+void
+monitor_shut_down(monitor_t *monitor);
 
 /* Monitor Implementation Ends Here */
 

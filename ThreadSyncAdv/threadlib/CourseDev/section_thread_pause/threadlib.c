@@ -33,7 +33,12 @@ thread_create(thread_t *thread, char *name) {
     thread->thread_created = false;
     thread->arg = NULL;
     thread->thread_fn = NULL;
-    pthread_attr_init(&thread->attributes);
+	thread->flags = 0;
+	thread->thread_pause_fn = 0;
+	thread->pause_arg = 0;
+	pthread_mutex_init(&thread->state_mutex, NULL);
+	pthread_cond_init(&thread->cv, NULL);
+	pthread_attr_init(&thread->attributes);
     return thread;
 }
 
@@ -43,6 +48,7 @@ thread_run(thread_t *thread, void *(*thread_fn)(void *), void *arg) {
     thread->thread_fn = thread_fn;
     thread->arg = arg;
     thread->thread_created = true;
+	SET_BIT(thread->flags, THREAD_F_RUNNING);
     pthread_create(&thread->thread,
             &thread->attributes,
             thread_fn,
@@ -64,10 +70,10 @@ thread_set_thread_attribute_joinable_or_detached(
 
 void
 thread_set_pause_fn(thread_t *thread,
-                    void *(*thread_fn_before_pause)(void *),
+                    void *(*thread_pause_fn)(void *),
                     void *pause_arg) {
 
-    thread->thread_fn_before_pause = thread_fn_before_pause;
+    thread->thread_pause_fn = thread_pause_fn;
     thread->pause_arg = pause_arg;
 }
 
@@ -103,9 +109,10 @@ thread_testpause(thread_t *thread) {
 
         SET_BIT(thread->flags, THREAD_F_PAUSED);
         UNSET_BIT(thread->flags, THREAD_F_MARKED_FOR_PAUSE);
-        (thread->thread_fn_before_pause)(thread->pause_arg);
+		UNSET_BIT(thread->flags, THREAD_F_RUNNING);
         pthread_cond_wait(&thread->cv, &thread->state_mutex);
-        SET_BIT(thread->flags, THREAD_F_RUNNING);
+		SET_BIT(thread->flags, THREAD_F_RUNNING);
+		(thread->thread_pause_fn)(thread->pause_arg);
         pthread_mutex_unlock(&thread->state_mutex);
     }
     else {

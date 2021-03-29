@@ -43,7 +43,7 @@ typedef struct thread_{
     void *arg;
     void *(*thread_fn)(void *);
     /* Fn to be invoked just before pauing the thread */
-    void *(*thread_fn_before_pause)(void *);
+    void *(*thread_pause_fn)(void *);
     /* Arg to be supplied to pause fn */
     void *pause_arg;
     /* track thread state */
@@ -71,7 +71,7 @@ thread_set_thread_attribute_joinable_or_detached(
 
 void
 thread_set_pause_fn(thread_t *thread,
-                    void *(*thread_fn_before_pause)(void *),
+                    void *(*thread_pause_fn)(void *),
                     void *pause_arg);
 
 void

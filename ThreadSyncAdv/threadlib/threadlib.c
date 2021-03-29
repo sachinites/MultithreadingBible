@@ -1039,6 +1039,8 @@ init_monitor(monitor_t *monitor,
 	
 	monitor->strict_alternation = false;
 	monitor->who_accessed_cs_last = THREAD_ANY;
+	monitor->shutdown = false;
+	monitor->is_deleted = false;
 	return monitor;
 }
 
@@ -1182,6 +1184,18 @@ monitor_is_resource_not_available(void *arg,
 	return !monitor_is_resource_available(arg, mutex);
 }
 
+
+void
+monitor_check_and_delete_monitor(monitor_t *monitor) {
+	/* Monitor mutex is already locked */
+	if (monitor->writer_thread_wait_q.thread_wait_count ||
+		monitor->reader_thread_wait_q.thread_wait_count ||
+		monitor->resource_status != MON_RES_AVAILABLE) {
+		return;	
+	}
+	monitor->is_deleted = true;
+}
+
 /* Caller is responsible to lock monitor's mutex */
 static void
 monitor_set_resource_status (monitor_t *monitor,
@@ -1189,6 +1203,7 @@ monitor_set_resource_status (monitor_t *monitor,
 
 	if (!access_granted_thread) {
 		monitor->resource_status = MON_RES_AVAILABLE;
+		monitor_check_and_delete_monitor(monitor);
 		return;
 	}
 	
@@ -1224,6 +1239,18 @@ monitor_request_access_permission(
 
 	assert(IS_GLTHREAD_LIST_EMPTY(&requester_thread->wait_glue));
 	
+	monitor_lock_monitor_talk_mutex(monitor);
+	
+	if (monitor->shutdown) {
+		printf("Monitor %s reject access request to thread %s, "
+			  "Monitor being shut down\n", monitor->name, requester_thread->name);
+		monitor_unlock_monitor_talk_mutex(monitor);
+		return;
+	}
+	else {
+		monitor_unlock_monitor_talk_mutex(monitor);
+	}
+
 	printf("Thread %s(%d) requesting Monitor %s for Resource accesse\n",
 			requester_thread->name,
 			requester_thread->thread_op,
@@ -1355,6 +1382,17 @@ monitor_inform_resource_released(
 		default : ;
 	}
 	monitor_unlock_monitor_talk_mutex(monitor);
+	
+	/*  Only the last thread exiting out the monitor will see
+		is_deleted flag set to true. No need to perform this operation
+		under mutex lock (and not possible either) as there wont be any
+		concurrent threads accessing the monitor at this point
+	*/
+	if (monitor->is_deleted) {
+		pthread_mutex_destroy(&monitor->monitor_talk_mutex);
+		printf("Freeing the monitor\n");
+		free(monitor);
+	}
 }
 
 void
@@ -1402,6 +1440,27 @@ monitor_sanity_check(monitor_t *monitor) {
 		(monitor->n_curr_writers > monitor->n_writers_max_limit)) {
 			assert(0);
 	}
+}
+
+/* Fn to shut down the monitor, We cant cancel the threads which may be
+   waiting in Monitor's Wait Queues as those threads may have other resources
+   locked. The correct way to do so is , allow all waiting threads to access
+   the resource one final time, and debar any new thread from submitting access
+   request to a monitor. When monitor do not have any threads in the Wait-Queues
+   or currently accessing the resource, then it shall be the safest point to clean
+   and delete all monitor resources. 
+   This is analogues to like how shop-keepers close their shops - Disallow new customers,
+   allow the existing customers in the shop to finish up their shopping, and when
+   all custp,ers// have gracefully exit the shop, then shut down the shop doors.
+   This is Cool Stuff !!
+*/
+
+void
+monitor_shut_down (monitor_t *monitor) {
+
+	monitor_lock_monitor_talk_mutex(monitor);
+	monitor->shutdown = true;
+	monitor_unlock_monitor_talk_mutex(monitor);
 }
 
 
@@ -1489,14 +1548,14 @@ thread_fn(void *arg) {
 	
 		printf("Thread %s Requesting Resource access\n",
 			thread->name);
-			
+		
 		monitor_request_access_permission(
 			mon, thread);
 
 		printf("Thread %s Accessing Resource\n",
 			thread->name);
 	
-		//sleep(1);
+		sleep(1);
 		print_monitor_snapshot(mon);
 		monitor_sanity_check(mon);
 
@@ -1526,6 +1585,11 @@ main(int argc, char **argv) {
 	thread_t *thread2 = create_thread( 0, "Producer",
 						THREAD_WRITER);
 	run_thread(thread2, thread_fn, thread2);
+	#if 0
+	sleep(10);
+	monitor_shut_down(mon);
+	mon = NULL;
+	#endif
 	
 	pthread_exit(0);
 	return 0;
