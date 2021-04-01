@@ -112,6 +112,7 @@ thread_test_and_pause(thread_t *thread) {
 		UNSET_BIT(thread->flags, THREAD_F_RUNNING);
         pthread_cond_wait(&thread->cv, &thread->state_mutex);
 		SET_BIT(thread->flags, THREAD_F_RUNNING);
+                UNSET_BIT(thread->flags, THREAD_F_PAUSED);
 		(thread->thread_pause_fn)(thread->pause_arg);
         pthread_mutex_unlock(&thread->state_mutex);
     }
