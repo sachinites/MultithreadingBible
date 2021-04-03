@@ -403,6 +403,90 @@ monitor_shut_down(monitor_t *monitor);
 
 /* Monitor Implementation Ends Here */
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Assembly line implementation starts here */
+typedef struct Queue_ Queue_t;
+
+typedef struct assembly_line_ {
+	
+	/* Name of the Assembly line */
+	char asl_name[32];
+	/* Size of the Assembly line, which is fied */
+	uint32_t asl_size;
+	/* Circular Queue of size N */
+	Queue_t *cq;
+	/* Wait-Queue, assembly line will wait for next
+	 item push until all workers have finished operation i.e.
+	 wait until n_workers_finshed_opn == Current_size of CQ
+	*/
+	wait_queue_t asl_wq;
+	/*no of worker threads finished their operation */
+	uint32_t n_workers_finshed_opn;
+	/* Used only during initialization of Assembly line (AL),
+	 Assembly line engine need to wait until all workers are
+	 initialized i.e. n_workers_ready == asl_size
+	*/
+	wait_queue_t asl_ready_wq;
+	/* no of workers ready to perform operation */
+	uint32_t n_workers_ready;
+	/* For updating properties of assembly_line_t y several threads
+	in a mutual exclusive way*/
+	pthread_mutex_t mutex;
+	/* List of workder threads */
+	glthread_t worker_threads_head;
+	/* asl engine thread */
+	thread_t *asl_thread;
+	/*finished fn*/
+	void (*print_finished_fn)(void *arg);
+} assembly_line_t;
+
+typedef struct asl_worker_ {
+	
+	/* Worker thread */
+	thread_t *worker_thread;
+	/* Slot no on which this worker thread operating*/
+	uint32_t curr_slot;
+	/* back ptr to assembly line for convinience*/
+	assembly_line_t *asl;
+	/* Work to be done by this worker thread on the ASL element */
+	void *(*work)(void *);
+	/* Glue to Queue up worker thread in asl->worker_threads_head list*/
+	glthread_t worker_thread_glue;
+	bool last_worker_in_asl;
+} asl_worker_t;
+GLTHREAD_TO_STRUCT(worker_thread_glue_to_asl_worker_thread,
+				  asl_worker_t, worker_thread_glue);
+	
+assembly_line_t *
+assembly_line_get_new_assembly_line(char *asl_name, uint32_t size);
+
+void
+assembly_line_push_new_item(assembly_line_t *asl,
+						     void *new_item);
+
+/* Assembly line implementation Ends here */
+
+
+
+
+
+
+
+
+
 #endif /* __THREAD_LIB__  */
 
 
