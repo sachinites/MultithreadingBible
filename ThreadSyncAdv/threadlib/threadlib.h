@@ -441,8 +441,8 @@ typedef struct assembly_line_ {
 	uint32_t asl_size;
         /* In which state is assembly line */
         asl_state_t asl_state;
-	/* Circular Queue of size N */
-	Queue_t *cq;
+	/* Assembly Queue of size N */
+	Fifo_Queue_t *asl_q;
 	/* Wait-Queue, assembly line will wait for next
 	 item push until all workers have finished operation i.e.
 	 wait until n_workers_finshed_opn == Current_size of CQ
@@ -453,7 +453,7 @@ typedef struct assembly_line_ {
 	/* no of workers ready to perform operation */
 	uint32_t n_workers_ready;
 	/* For updating properties of assembly_line_t y several threads
-	in a mutual exclusive way*/
+	   in a mutual exclusive way*/
 	pthread_mutex_t mutex;
 	/* List of workder threads */
 	glthread_t worker_threads_head;
@@ -464,12 +464,13 @@ typedef struct assembly_line_ {
         /* Array of worker fns to be assigned to worker threads */
         generic_fn_ptr *work_fns;
         /* Wait list for items to pushed into ASL */
-        Fifo_Queue_t *fq;
+        Fifo_Queue_t *wait_lst_fq;
         /* Cache the first worker thread, used to push the new
          * element in ASL Queue */
         struct asl_worker_ *T0;
-        /*  No of times the ASL has been reset */
-        uint32_t n_asl_reset_count;
+        /* Cache the last worker thread, used to remove the ASL item
+         * from ASL Queue eventually */
+        struct asl_worker_ *Tn;
 } assembly_line_t;
 
 struct asl_worker_ {
@@ -478,9 +479,6 @@ struct asl_worker_ {
 	thread_t *worker_thread;
 	/* Slot no on which this worker thread operating*/
 	uint32_t curr_slot;
-        /* Original slot no assigned to this worker thread in
-         * the beginning */
-        uint32_t orig_slot;
 	/* back ptr to assembly line for convinience*/
 	assembly_line_t *asl;
 	/* Work to be done by this worker thread on the ASL element */
@@ -489,8 +487,6 @@ struct asl_worker_ {
 	glthread_t worker_thread_glue;
         /* Worker thread is ready to service assembly line */
 	bool initialized;
-        /* indicate if this is the last worker thread in ASL */
-	bool last_worker_in_asl;
 };
 GLTHREAD_TO_STRUCT(worker_thread_glue_to_asl_worker_thread,
 				  asl_worker_t, worker_thread_glue);
