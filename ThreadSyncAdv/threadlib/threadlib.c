@@ -1695,7 +1695,7 @@ worker_thread_init(void *arg) {
 #if 0 
             printf("worker thread %s operating on object: \n", 
                     worker_thread->worker_thread->name);
-            asl->print_finished_fn(asl_q->elem[worker_thread->curr_slot]);
+            asl->asl_process_finished_product(asl_q->elem[worker_thread->curr_slot]);
 #endif
             /* Execute Worker thread operation on Object now. Note that, this code
              * needs to be run in parallel by all worker threads, Dont mutual exclusate
@@ -1712,7 +1712,7 @@ worker_thread_init(void *arg) {
                 void *finished_obj = Fifo_insert_or_replace_at_index(
                                         asl->asl_q, 0,
                                         worker_thread->curr_slot);
-                asl->print_finished_fn(finished_obj);
+                asl->asl_process_finished_product(finished_obj);
                 pthread_mutex_unlock(&asl->mutex);
             }
         }
@@ -1793,7 +1793,7 @@ assembly_line_init_worker_threads (assembly_line_t *asl) {
 assembly_line_t *
 assembly_line_get_new_assembly_line(char *asl_name,
                                     uint32_t size,
-                                    void (*print_finished_fn)(void *arg)){
+                                    void (*asl_process_finished_product)(void *arg)){
 
     assembly_line_t *asl = (assembly_line_t *) calloc(1, sizeof(assembly_line_t));
 
@@ -1820,7 +1820,7 @@ assembly_line_get_new_assembly_line(char *asl_name,
        ASL */
     asl->asl_engine_thread = NULL;
 
-    asl->print_finished_fn = print_finished_fn;
+    asl->asl_process_finished_product = asl_process_finished_product;
 
     asl->work_fns = (generic_fn_ptr *)calloc(
             asl->asl_size, sizeof(generic_fn_ptr));
@@ -1985,7 +1985,7 @@ typedef struct car_{
 } car_t;
 
 void
-print_object_finished_fn(void *object) {
+appln_asl_process_finished_product_fn(void *object) {
 
     car_t *car = (car_t *)object;
     printf("Finished Object : car->name = %s car->flags = %u\n",
@@ -2077,11 +2077,17 @@ main(int argc, char **argv) {
     car4 = calloc(1, sizeof(car_t));
     strcpy(car4->name, "BMW");
 
+    while(1) {
     assembly_line_push_new_item(asl, (void *)car1);
     assembly_line_push_new_item(asl, (void *)car2);
     assembly_line_push_new_item(asl, (void *)car3);
     assembly_line_push_new_item(asl, (void *)car4);
-
+    sleep(1);
+    car1->flags = 0;
+    car2->flags = 0;
+    car3->flags = 0;
+    car4->flags = 0;
+    }
     pthread_exit(0);
     return 0;
 }

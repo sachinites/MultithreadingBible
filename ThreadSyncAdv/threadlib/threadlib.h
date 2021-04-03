@@ -419,8 +419,6 @@ monitor_shut_down(monitor_t *monitor);
 
 
 /* Assembly line implementation starts here */
-typedef struct Queue_ Queue_t;
-
 typedef void *(*generic_fn_ptr)(void *arg);
 
 typedef enum {
@@ -460,7 +458,7 @@ typedef struct assembly_line_ {
 	/* asl engine thread */
 	thread_t *asl_engine_thread;
 	/*finished fn*/
-	void (*print_finished_fn)(void *arg);
+	void (*asl_process_finished_product)(void *arg);
         /* Array of worker fns to be assigned to worker threads */
         generic_fn_ptr *work_fns;
         /* Wait list for items to pushed into ASL */
@@ -506,6 +504,12 @@ assembly_line_init_worker_threads (assembly_line_t *asl);
 void
 assembly_line_push_new_item(assembly_line_t *asl,
 			    void *new_item);
+
+/*
+ * Ques : 
+ * Joining the two Assembly lines end-to-end
+ * Rcycling through an assembly line (sugarcane juice machine)
+ */
 
 /* Assembly line implementation Ends here */
 
