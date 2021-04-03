@@ -30,6 +30,7 @@
 #include <semaphore.h>
 #include <stdbool.h>
 #include "../gluethread/glthread.h"
+#include "Fifo_Queue.h"
 
 typedef enum{
 
@@ -97,7 +98,7 @@ typedef struct thread_execution_data_ {
        pool and optionally notifies the parent thread if required*/
     void (*thread_stage3_fn)(thread_pool_t *, thread_t *);
     /* Below two are Arguments for stage 3 function
-    /* Thread pool to which the thread need to rest in peace after
+       Thread pool to which the thread need to rest in peace after
        it has accomplished its task*/
     thread_pool_t *thread_pool;
     /* Data structure representing the thread*/
@@ -420,12 +421,26 @@ monitor_shut_down(monitor_t *monitor);
 /* Assembly line implementation starts here */
 typedef struct Queue_ Queue_t;
 
+typedef void *(*generic_fn_ptr)(void *arg);
+
+typedef enum {
+
+    ASL_NOT_STARTED,
+    ASL_IN_PROGRESS,
+    ASL_WAIT,
+    ASL_STOPPED
+} asl_state_t;
+
+typedef struct asl_worker_ asl_worker_t;
+
 typedef struct assembly_line_ {
 	
 	/* Name of the Assembly line */
-	char asl_name[32];
+	char asl_name[64];
 	/* Size of the Assembly line, which is fied */
 	uint32_t asl_size;
+        /* In which state is assembly line */
+        asl_state_t asl_state;
 	/* Circular Queue of size N */
 	Queue_t *cq;
 	/* Wait-Queue, assembly line will wait for next
@@ -443,35 +458,58 @@ typedef struct assembly_line_ {
 	/* List of workder threads */
 	glthread_t worker_threads_head;
 	/* asl engine thread */
-	thread_t *asl_thread;
+	thread_t *asl_engine_thread;
 	/*finished fn*/
 	void (*print_finished_fn)(void *arg);
+        /* Array of worker fns to be assigned to worker threads */
+        generic_fn_ptr *work_fns;
+        /* Wait list for items to pushed into ASL */
+        Fifo_Queue_t *fq;
+        /* Cache the first worker thread, used to push the new
+         * element in ASL Queue */
+        struct asl_worker_ *T0;
+        /*  No of times the ASL has been reset */
+        uint32_t n_asl_reset_count;
 } assembly_line_t;
 
-typedef struct asl_worker_ {
+struct asl_worker_ {
 	
 	/* Worker thread */
 	thread_t *worker_thread;
 	/* Slot no on which this worker thread operating*/
 	uint32_t curr_slot;
+        /* Original slot no assigned to this worker thread in
+         * the beginning */
+        uint32_t orig_slot;
 	/* back ptr to assembly line for convinience*/
 	assembly_line_t *asl;
 	/* Work to be done by this worker thread on the ASL element */
-	void *(*work)(void *);
+        generic_fn_ptr work;
 	/* Glue to Queue up worker thread in asl->worker_threads_head list*/
 	glthread_t worker_thread_glue;
+        /* Worker thread is ready to service assembly line */
 	bool initialized;
+        /* indicate if this is the last worker thread in ASL */
 	bool last_worker_in_asl;
-} asl_worker_t;
+};
 GLTHREAD_TO_STRUCT(worker_thread_glue_to_asl_worker_thread,
 				  asl_worker_t, worker_thread_glue);
 	
 assembly_line_t *
-assembly_line_get_new_assembly_line(char *asl_name, uint32_t size);
+assembly_line_get_new_assembly_line(char *asl_name, uint32_t size,
+                                void (*print_finished_fn)(void *arg));
+
+void
+assembly_line_register_worker_fns(assembly_line_t *asl,
+                                  uint32_t slot,
+                                  generic_fn_ptr work_fn);
+
+void
+assembly_line_init_worker_threads (assembly_line_t *asl);
 
 void
 assembly_line_push_new_item(assembly_line_t *asl,
-						     void *new_item);
+			    void *new_item);
 
 /* Assembly line implementation Ends here */
 

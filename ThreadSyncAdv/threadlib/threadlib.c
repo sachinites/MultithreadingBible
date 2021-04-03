@@ -1,4 +1,5 @@
 /*
+ * 0ty
  * =====================================================================================
  *
  *       Filename:  threadlib.c
@@ -30,7 +31,6 @@
 #include <unistd.h>
 #include <stdint.h>
 #include "threadlib.h"
-
 
 /* Fn to create and initialize a new thread Data structure
    When a new thread_t is created, it is just a data structure
@@ -1536,7 +1536,7 @@ main(int argc, char **argv) {
 #endif
 
 /* Using monitor to demonstrate producer consumer */
-#if 1
+#if 0
 monitor_t *mon;
 
 void *
@@ -1607,7 +1607,7 @@ main(int argc, char **argv) {
 /* Queue data structure to be used by Assembly line, This Queues
    Data structure has been optimized to meet assembly line needs */
 typedef struct Queue_ {
-	uint32_t front;
+    uint32_t front;
     uint32_t count;
     uint32_t max_queue_size;
     void **elem;
@@ -1623,6 +1623,13 @@ initQ (uint32_t q_size) {
     return q;
 }
 
+void
+re_init_Q(Queue_t *q){
+
+    assert(q->count == 0);
+    q->front = 0;
+}
+
 /* Returns the replaced elemenent */
 void *
 enqueue(Queue_t *q, void *ptr) {
@@ -1632,7 +1639,7 @@ enqueue(Queue_t *q, void *ptr) {
     if (q->elem[q->front]) {
         pop_obj = q->elem[q->front];
         q->elem[q->front] = ptr;
-		if (!ptr) q->count--;
+	if (!ptr) q->count--;
     }
     else {
         q->elem[q->front] = ptr;
@@ -1652,236 +1659,479 @@ enqueue(Queue_t *q, void *ptr) {
 
 static bool
 asl_wait_until_all_workers_ready(void *app_arg,
-							  pthread_mutex_t **locked_appln_mutex) {
-	
-	asl_worker_t *worker_thread = (asl_worker_t *)app_arg;
-	assembly_line_t *asl = worker_thread->asl;
-	
-	if (locked_appln_mutex) {
-		*locked_appln_mutex = &asl->mutex;
-		pthread_mutex_lock(&asl->mutex);
-	}	
-	
-	return  (asl->n_workers_ready != asl->asl_size);
+        pthread_mutex_t **locked_appln_mutex) {
+
+    bool rc;
+    assembly_line_t *asl = (assembly_line_t *)app_arg;
+
+    if (locked_appln_mutex) {
+        *locked_appln_mutex = &asl->mutex;
+        pthread_mutex_lock(&asl->mutex);
+    }
+    
+    rc = (asl->n_workers_ready != asl->asl_size);
+
+    return  rc;
+}
+
+
+static void
+assembly_line_reset_worker_threads_slots(
+        assembly_line_t *asl) {
+
+    glthread_t *curr;
+    asl_worker_t *worker_thread;
+
+    ITERATE_GLTHREAD_BEGIN(&asl->worker_threads_head, curr) {
+
+        worker_thread = worker_thread_glue_to_asl_worker_thread(curr);
+        worker_thread->curr_slot = worker_thread->orig_slot;
+    } ITERATE_GLTHREAD_END(&asl->worker_threads_head, curr)
+}
+
+/*
+ * Caller is supposed to lock the asl->mutex if required
+ */
+static void
+assembly_line_reset(assembly_line_t *asl) {
+
+    re_init_Q(asl->cq);
+    assembly_line_reset_worker_threads_slots(asl);
+    asl->n_asl_reset_count++;
+}
+
+static void
+assembly_line_enqueue_new_item(assembly_line_t *asl,
+                               void *object) {
+
+    asl_worker_t *T0 = asl->T0;
+    /* The slot pointed by First worker thread has to be
+     * empty to accomodate a new object in ASL Queue */
+    assert(asl->cq->elem[T0->curr_slot] == 0);
+    asl->cq->elem[T0->curr_slot] = object;
+    asl->cq->count++;
 }
 
 static asl_worker_t *
 assembly_line_create_new_worker_thread (assembly_line_t *asl,
-									    uint32_t slot_no) {
+        uint32_t slot_no) {
 
-	char th_name[32];
-	
-	asl_worker_t * worker_thread =
-		(asl_worker_t *)calloc(1, sizeof(asl_worker_t));
-	
-	sprintf(th_name, "thread_%d", slot_no);
-	worker_thread->worker_thread = create_thread(0, th_name, THREAD_WRITER);
-	worker_thread->curr_slot = slot_no;
-	worker_thread->asl = asl;
-	init_glthread(&worker_thread->worker_thread_glue);
-	
-	if (slot_no == (asl->asl_size - 1)) {
-		worker_thread->last_worker_in_asl = true;
-	}
-	
-	return worker_thread;
+    char th_name[32];
+
+    asl_worker_t * worker_thread =
+        (asl_worker_t *)calloc(1, sizeof(asl_worker_t));
+
+    sprintf(th_name, "thread_%d", slot_no);
+    worker_thread->worker_thread = create_thread(0, th_name, THREAD_WRITER);
+    worker_thread->worker_thread->caller_semaphore = calloc(1, sizeof(sem_t));
+    sem_init(worker_thread->worker_thread->caller_semaphore, 0, 0);
+    worker_thread->curr_slot = slot_no;
+    worker_thread->orig_slot = slot_no;
+    worker_thread->asl = asl;
+    init_glthread(&worker_thread->worker_thread_glue);
+
+    worker_thread->last_worker_in_asl = false;
+
+    if (slot_no == (asl->asl_size - 1)) {
+        worker_thread->last_worker_in_asl = true;
+    }
+
+    return worker_thread;
 }
 
 static void *
 worker_thread_init(void *arg) {
 
-	Queue_t *cq;
-	asl_worker_t *worker_thread = (asl_worker_t *)arg;
-	assembly_line_t *asl = worker_thread->asl;
-	
-	cq = asl->cq;
-	
-	while(1) {
-	
-		if (!worker_thread->initialized) {
-			worker_thread->initialized = true;
-			pthread_mutex_lock(&asl->mutex);
-			asl->n_workers_ready++;
-			pthread_mutex_unlock(&asl->mutex);
-			wait_queue_signal(&asl->asl_ready_wq, false);
-			pthread_cond_wait(&worker_thread->worker_thread->cv, NULL);
-		}
-		
-		if (cq->elem[worker_thread->curr_slot]) {
-	
-			(worker_thread->work)( (void *) (cq->elem[worker_thread->curr_slot]) );
-			
-			if (worker_thread->last_worker_in_asl) {
-				void *finished_obj = asl->cq->elem[worker_thread->curr_slot];
-				asl->print_finished_fn(finished_obj);
-				asl->cq->elem[worker_thread->curr_slot] = NULL;
-				pthread_mutex_lock(&asl->mutex);
-				asl->cq->count--;
-				pthread_mutex_unlock(&asl->mutex);
-			}
-		}
-		worker_thread->curr_slot--;
-		pthread_mutex_lock(&asl->mutex);
-		asl->n_workers_ready++;
-		wait_queue_signal(&asl->asl_wq, false);
-		wait_queue_signal(&asl->asl_ready_wq, false);
-		pthread_mutex_unlock(&asl->mutex);
-		pthread_cond_wait(&worker_thread->worker_thread->cv, NULL);
-	}
+    Queue_t *cq;
+    asl_worker_t *worker_thread = (asl_worker_t *)arg;
+    assembly_line_t *asl = worker_thread->asl;
 
-	return NULL;
+    cq = asl->cq;
+
+    while(1) {
+
+        if (!worker_thread->initialized) {
+            worker_thread->initialized = true;
+            worker_thread->work = *(asl->work_fns + worker_thread->curr_slot);
+            assert(worker_thread->work);
+            pthread_mutex_lock(&asl->mutex);
+            asl->n_workers_ready++;
+            pthread_mutex_unlock(&asl->mutex);
+            wait_queue_signal(&asl->asl_ready_wq, true);
+            sem_wait(worker_thread->worker_thread->caller_semaphore);
+            printf("worker thread %s wakes up\n", worker_thread->worker_thread->name);
+        }
+
+        if (cq->elem[worker_thread->curr_slot]) {
+          
+#if 0 
+            printf("worker thread %s operating on object: \n", 
+                    worker_thread->worker_thread->name);
+            asl->print_finished_fn(cq->elem[worker_thread->curr_slot]);
+#endif
+
+            (worker_thread->work)( (void *) (cq->elem[worker_thread->curr_slot]) );
+
+            if (worker_thread->last_worker_in_asl) {
+                
+                printf("worker thread %s was last worker in asl, removing the "
+                        "finished object from asl\n",
+                        worker_thread->worker_thread->name);
+
+                void *finished_obj = asl->cq->elem[worker_thread->curr_slot];
+                asl->print_finished_fn(finished_obj);
+                asl->cq->elem[worker_thread->curr_slot] = NULL;
+                pthread_mutex_lock(&asl->mutex);
+                asl->cq->count--;
+                pthread_mutex_unlock(&asl->mutex);
+            }
+        }
+
+        if (worker_thread->curr_slot == 0) {
+            worker_thread->curr_slot = asl->asl_size - 1;
+        }
+        else {
+            worker_thread->curr_slot--;
+        }
+
+        pthread_mutex_lock(&asl->mutex);
+        asl->n_workers_ready++;
+        wait_queue_signal(&asl->asl_wq, false);
+        wait_queue_signal(&asl->asl_ready_wq, false);
+        pthread_mutex_unlock(&asl->mutex);
+        //printf("worker thread %s done\n",
+          //      worker_thread->worker_thread->name);
+        sem_wait(worker_thread->worker_thread->caller_semaphore);
+    }
+
+    return NULL;
 }
 
 static void
 assembly_line_start_worker_thread(asl_worker_t *worker_thread) {
 
-	run_thread(worker_thread->worker_thread,
-				worker_thread_init,
-				(void *)worker_thread);
+    run_thread(worker_thread->worker_thread,
+            worker_thread_init,
+            (void *)worker_thread);
 }
 
-static void
+void
 assembly_line_init_worker_threads (assembly_line_t *asl) {
 
-	int i;
-	asl_worker_t *worker_thread;
-	
-	/* A dummy thread data structure created to represent the main
-	   thread i.e. the thread which is executing 'this' code
-	 */
-	thread_t *main_thread = create_thread(0, "main-thread",  THREAD_WRITER);
-	
-	for (i = 0 ; i < asl->asl_size; i++) {
-		
-		worker_thread = assembly_line_create_new_worker_thread(asl, i);
-		
-		glthread_add_next(&asl->worker_threads_head,
-						   &worker_thread->worker_thread_glue);
-						   
-		assembly_line_start_worker_thread(worker_thread);
-	}
-	
-	printf("main-thread ready for all workers to get ready\n");
-	
-	wait_queue_test_and_wait(&asl->asl_ready_wq,
-							 asl_wait_until_all_workers_ready,
-							 (void *)asl, main_thread);
+    int i;
+    asl_worker_t *worker_thread;
 
-	printf("All worder threads ready \n");
-	
-	free(main_thread);
-	main_thread = 0;
+    /* A dummy thread data structure created to represent the main
+       thread i.e. the thread which is executing 'this' code
+       */
+    thread_t *main_thread = create_thread(0, "main-thread",  THREAD_WRITER);
+
+    for (i = 0 ; i < asl->asl_size; i++) {
+
+        worker_thread = assembly_line_create_new_worker_thread(asl, i);
+
+        glthread_add_next(&asl->worker_threads_head,
+                &worker_thread->worker_thread_glue);
+       
+        /*  Cache the first worker thread, we will use this info to
+         *  insert new object in ASL Queue at T0->curr_slot number */ 
+        if (i == 0) {
+            asl->T0 = worker_thread;
+        }
+
+        assembly_line_start_worker_thread(worker_thread);
+    }
+    
+    wait_queue_test_and_wait(&asl->asl_ready_wq,
+            asl_wait_until_all_workers_ready,
+            (void *)asl, main_thread);
+
+    printf("All worker threads ready \n");
+
+    free(main_thread);
+    main_thread = 0;
 }
 
 assembly_line_t *
-assembly_line_get_new_assembly_line(char *asl_name, uint32_t size) {
+assembly_line_get_new_assembly_line(char *asl_name,
+                                    uint32_t size,
+                                    void (*print_finished_fn)(void *arg)){
 
-	assembly_line_t *asl = (assembly_line_t *) calloc(1, sizeof(assembly_line_t));
-	
-	strncpy(asl->asl_name, asl_name, sizeof(asl->asl_name));
-	asl->asl_size = size;
-	
-	/* initialize Circular Queue */
-	asl->cq =  initQ(size);
-	
-	/* No need for priority Q, since only the main thread - the asl
-	engine thread would going to block on this Wait Queue*/
-	wait_queue_init(&asl->asl_wq, false, 0);
-	wait_queue_set_auto_unlock_appln_mutex(&asl->asl_wq, false);
-		
-	wait_queue_init(&asl->asl_ready_wq, false, 0);
-	asl->n_workers_ready = 0;
-	
-	/* initialize Assembly line Mutex */
-	pthread_mutex_init(&asl->mutex, NULL);
-	
-	/* Thread will be created when item will be pushed into
-	ASL */
-	asl->asl_thread = NULL;
-	
-	assembly_line_init_worker_threads(asl);
-	return asl;
+    assembly_line_t *asl = (assembly_line_t *) calloc(1, sizeof(assembly_line_t));
+
+    strncpy(asl->asl_name, asl_name, sizeof(asl->asl_name));
+    asl->asl_size = size;
+
+    asl->asl_state = ASL_NOT_STARTED;
+
+    /* initialize Circular Queue */
+    asl->cq =  initQ(size);
+
+    /* No need for priority Q, since only the main thread - the asl
+       engine thread would going to block on this Wait Queue*/
+    wait_queue_init(&asl->asl_wq, false, 0);
+    wait_queue_set_auto_unlock_appln_mutex(&asl->asl_wq, false);
+
+    wait_queue_init(&asl->asl_ready_wq, false, 0);
+    asl->n_workers_ready = 0;
+
+    /* initialize Assembly line Mutex */
+    pthread_mutex_init(&asl->mutex, NULL);
+
+    /* Thread will be created when item will be pushed into
+       ASL */
+    asl->asl_engine_thread = NULL;
+
+    asl->print_finished_fn = print_finished_fn;
+
+    asl->work_fns = (generic_fn_ptr *)calloc(
+            asl->asl_size, sizeof(generic_fn_ptr));
+
+    asl->fq = Fifo_initQ();
+    asl->n_asl_reset_count = 0;
+
+    return asl;
 }
 
 static void *
 asl_engine_fn(void *arg) {
 
-	glthread_t *curr;
-	asl_worker_t *worker_thread;
-	
-	assembly_line_t *asl = (assembly_line_t *) arg;
-	
-	do {
-		pthread_mutex_lock(&asl->mutex);
-	
-		asl->n_workers_ready = 0;
-		
-		ITERATE_GLTHREAD_BEGIN(&asl->worker_threads_head, curr) {
-		
-			worker_thread = worker_thread_glue_to_asl_worker_thread(curr);
-			pthread_cond_signal(&worker_thread->worker_thread->cv);
-		} ITERATE_GLTHREAD_END(&asl->worker_threads_head, curr)
-	
-		pthread_mutex_unlock(&asl->mutex);
-	
-		wait_queue_test_and_wait(&asl->asl_wq,
-							 asl_wait_until_all_workers_ready,
-							 (void *)asl, worker_thread->worker_thread);
-							 
-		if (asl->cq->count) {
-			pthread_mutex_unlock(&asl->mutex);
-			continue;
-		}
-		else {
-			pthread_mutex_unlock(&asl->mutex);
-			printf("Assembly line came to rest \n");
-			asl->asl_thread = NULL;
-			break;
-		}
-	} while(1);
-	
-	return NULL;
+    glthread_t *curr;
+    asl_worker_t *worker_thread;
+    void *wait_lst_item;
+
+    assembly_line_t *asl = (assembly_line_t *) arg;
+
+
+    do {
+        
+        pthread_mutex_lock(&asl->mutex);
+        asl->asl_state = ASL_IN_PROGRESS;
+        asl->n_workers_ready = 0;
+
+        ITERATE_GLTHREAD_BEGIN(&asl->worker_threads_head, curr) {
+
+            worker_thread = worker_thread_glue_to_asl_worker_thread(curr);
+            sem_post(worker_thread->worker_thread->caller_semaphore);
+        } ITERATE_GLTHREAD_END(&asl->worker_threads_head, curr)
+
+        pthread_mutex_unlock(&asl->mutex);
+
+        wait_queue_test_and_wait(&asl->asl_wq,
+                asl_wait_until_all_workers_ready,
+                (void *)asl, worker_thread->worker_thread);
+    
+        /* ASL thread is unblocked, asl->mutex is not yet released by WQ */
+        wait_lst_item =  Fifo_deque(asl->fq);
+
+        if (wait_lst_item) {
+            assembly_line_enqueue_new_item(asl, wait_lst_item);
+        }
+
+        if (asl->cq->count) {
+            pthread_mutex_unlock(&asl->mutex);
+            continue;
+        }
+        else {
+            asl->asl_state = ASL_WAIT;
+            assembly_line_reset(asl);            
+            printf("Assembly line came to halt , reset count = %u\n",
+                    asl->n_asl_reset_count);
+            pthread_mutex_unlock(&asl->mutex);
+            sem_wait(asl->asl_engine_thread->caller_semaphore);
+        }
+    } while(1);
+
+    return NULL;
 }
 
 static void
 assembly_line_engine_start(assembly_line_t *asl) {
 
-	pthread_mutex_lock(&asl->mutex);
-	
-	if (!asl->asl_thread) {
-		asl->asl_thread = 
-			create_thread (0, "assembly_line_engine_thread", THREAD_WRITER);
-			
-		run_thread(asl->asl_thread,
-			  asl_engine_fn,
-			  (void *)asl);
-	}
-	pthread_mutex_unlock(&asl->mutex);
+    pthread_mutex_lock(&asl->mutex);
+
+    if (!asl->asl_engine_thread) {
+
+        printf("Creating Assembly line engine thread\n");
+
+        asl->asl_engine_thread = 
+            create_thread (0, "assembly_line_engine_thread", THREAD_WRITER);
+
+        asl->asl_engine_thread->caller_semaphore = calloc(1, sizeof(sem_t));
+        sem_init(asl->asl_engine_thread->caller_semaphore, 0, 0);
+        run_thread(asl->asl_engine_thread,
+                asl_engine_fn,
+                (void *)asl);
+    }
+    else if (asl->asl_state == ASL_WAIT){
+        asl->asl_state = ASL_IN_PROGRESS;
+        printf(" Assembly line engine signalled\n");
+        sem_post(asl->asl_engine_thread->caller_semaphore);
+    }
+    pthread_mutex_unlock(&asl->mutex);
 }
 
 void
 assembly_line_push_new_item(assembly_line_t *asl,
-							void *new_item) {
+        void *new_item) {
 
-	glthread_t *curr;
-	asl_worker_t *worker_thread;
-	
-	thread_t *main_thread = create_thread (0, "main-thread",  THREAD_WRITER);
-	
-	wait_queue_test_and_wait(&asl->asl_ready_wq,
-							 asl_wait_until_all_workers_ready,
-							 (void *)asl, main_thread);
-	
-	pthread_mutex_lock(&asl->mutex);
-	enqueue(asl->cq, new_item);
-	pthread_mutex_unlock(&asl->mutex);
-	
-	assembly_line_engine_start(asl);
-	
-	free(main_thread);
-	main_thread = 0;
+    glthread_t *curr;
+    asl_worker_t *worker_thread;
+
+    thread_t *client_thread =
+        create_thread (0, "client-thread",  THREAD_WRITER);
+
+    wait_queue_test_and_wait(&asl->asl_ready_wq,
+            asl_wait_until_all_workers_ready,
+            (void *)asl, client_thread);
+
+    pthread_mutex_lock(&asl->mutex);
+
+    /* Push the first item in the assembly line */
+    if (!asl->cq->count) {
+        assembly_line_enqueue_new_item(asl, new_item); 
+    }
+    /* 
+     * We cant push another item in the assembly line, let Queue them
+     * in another wait list Queue, when ASL moved forward by 1 position,
+     * 1 item from wait list Queue shall be transferred to ASL Queue
+     * */
+    else if (!is_queue_full(asl->fq)) {
+        Fifo_enqueue(asl->fq, new_item);
+    }
+    else {
+        assert(0);
+    }
+
+    pthread_mutex_unlock(&asl->mutex);
+    assembly_line_engine_start(asl);
+    free(client_thread);
+    client_thread = 0;
 }
 
+void
+assembly_line_register_worker_fns(assembly_line_t *asl,
+                                  uint32_t slot,
+                                  generic_fn_ptr work_fn){
+
+    asl->work_fns[slot] = work_fn;
+}
+
+
+#if 1
+
+typedef struct car_{
+
+    char name[32];
+    uint32_t flags;
+} car_t;
+
+void
+print_object_finished_fn(void *object) {
+
+    car_t *car = (car_t *)object;
+    printf("Finished Object : car->name = %s car->flags = %u\n",
+            car->name, car->flags);
+}
+
+#define CAR_F_WHITE_PAINT   1
+#define CAR_F_WHEELS        2
+#define CAR_F_ENGINE        4
+#define CAR_F_WINDOWS       8
+#define CAR_F_FINISHING     16
+
+void *
+car_add_white_paint(void *object) {
+
+    car_t *car = (car_t *)object;
+    car->flags |= CAR_F_WHITE_PAINT;
+    printf("ASL Update : Car %s : Paint Added\n", car->name);
+    return 0;
+}
+
+void *
+car_add_wheels(void *object) {
+
+    car_t *car = (car_t *)object;
+    car->flags |= CAR_F_WHEELS;
+    printf("ASL Update : Car %s : Wheels Added\n", car->name);
+    return 0;
+}
+
+void *
+car_add_engine(void *object) {
+
+    car_t *car = (car_t *)object;
+    car->flags |= CAR_F_ENGINE;
+    printf("ASL Update : Car %s : Engine Added\n", car->name);
+    return 0;
+}
+
+void *
+car_add_windows(void *object) {
+
+    car_t *car = (car_t *)object;
+    car->flags |= CAR_F_WINDOWS;
+    printf("ASL Update : Car %s : Windows Added\n", car->name);
+    return 0;
+}
+
+void *
+car_add_finishing(void *object) {
+
+    car_t *car = (car_t *)object;
+    car->flags |= CAR_F_FINISHING;
+    printf("ASL Update : Car %s : Finishing Added\n", car->name);
+    return 0;
+}
+
+int
+main(int argc, char **argv) {
+
+    /*  Create an assembly line */
+    assembly_line_t *asl = assembly_line_get_new_assembly_line(
+                            "Car-Manufacturing Assembly Line",
+                            5,
+                            print_object_finished_fn);
+
+    /*  Register worker functions for each slot */
+    assembly_line_register_worker_fns(asl, 0, car_add_white_paint);
+    assembly_line_register_worker_fns(asl, 1, car_add_wheels);
+    assembly_line_register_worker_fns(asl, 2, car_add_engine);
+    assembly_line_register_worker_fns(asl, 3, car_add_windows);
+    assembly_line_register_worker_fns(asl, 4, car_add_finishing);
+
+    /* intitialize worker threads */
+    assembly_line_init_worker_threads(asl);
+
+    /* Now you can push objects to assembly line pipeline */
+    car_t *car1, *car2;
+
+    car1 = calloc(1, sizeof(car_t));
+    strcpy(car1->name, "indica");
+
+    car2 = calloc(1, sizeof(car_t));
+    strcpy(car2->name, "etios");
+
+    assembly_line_push_new_item(asl, (void *)car1);
+    assembly_line_push_new_item(asl, (void *)car2);
+
+    sleep(3);
+
+    strcpy(car1->name, "toyota");
+    car1->flags = 0;
+
+    strcpy(car2->name, "BMW");
+    car2->flags = 0;
+
+    assembly_line_push_new_item(asl, (void *)car1);
+    assembly_line_push_new_item(asl, (void *)car2);
+
+    pthread_exit(0);
+    return 0;
+}
+
+#endif
 
 /* Assembly line implementation Ends here */
 
