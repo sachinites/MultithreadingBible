@@ -1600,6 +1600,292 @@ main(int argc, char **argv) {
 /* Monitor Implementation Ends here */
 
 
+
+/* Assembly line implementation starts here */
+
+
+/* Queue data structure to be used by Assembly line, This Queues
+   Data structure has been optimized to meet assembly line needs */
+typedef struct Queue_ {
+	uint32_t front;
+    uint32_t count;
+    uint32_t max_queue_size;
+    void **elem;
+} Queue_t;
+
+Queue_t *
+initQ (uint32_t q_size) {
+    Queue_t *q = calloc(1, sizeof(Queue_t));
+    q->front = 0;
+    q->count = 0;
+    q->max_queue_size = q_size;
+    q->elem = (void **) calloc (q->max_queue_size, sizeof(void *));
+    return q;
+}
+
+/* Returns the replaced elemenent */
+void *
+enqueue(Queue_t *q, void *ptr) {
+
+    void *pop_obj;
+
+    if (q->elem[q->front]) {
+        pop_obj = q->elem[q->front];
+        q->elem[q->front] = ptr;
+		if (!ptr) q->count--;
+    }
+    else {
+        q->elem[q->front] = ptr;
+        pop_obj = NULL;
+        if (ptr) q->count++;
+    }
+
+    if (q->front == 0 ) {
+        q->front = q->max_queue_size - 1;
+    }
+    else {
+        q->front--;
+    }
+
+    return pop_obj;
+}
+
+static bool
+asl_wait_until_all_workers_ready(void *app_arg,
+							  pthread_mutex_t **locked_appln_mutex) {
+	
+	asl_worker_t *worker_thread = (asl_worker_t *)app_arg;
+	assembly_line_t *asl = worker_thread->asl;
+	
+	if (locked_appln_mutex) {
+		*locked_appln_mutex = &asl->mutex;
+		pthread_mutex_lock(&asl->mutex);
+	}	
+	
+	return  (asl->n_workers_ready != asl->asl_size);
+}
+
+static asl_worker_t *
+assembly_line_create_new_worker_thread (assembly_line_t *asl,
+									    uint32_t slot_no) {
+
+	char th_name[32];
+	
+	asl_worker_t * worker_thread =
+		(asl_worker_t *)calloc(1, sizeof(asl_worker_t));
+	
+	sprintf(th_name, "thread_%d", slot_no);
+	worker_thread->worker_thread = create_thread(0, th_name, THREAD_WRITER);
+	worker_thread->curr_slot = slot_no;
+	worker_thread->asl = asl;
+	init_glthread(&worker_thread->worker_thread_glue);
+	
+	if (slot_no == (asl->asl_size - 1)) {
+		worker_thread->last_worker_in_asl = true;
+	}
+	
+	return worker_thread;
+}
+
+static void *
+worker_thread_init(void *arg) {
+
+	Queue_t *cq;
+	asl_worker_t *worker_thread = (asl_worker_t *)arg;
+	assembly_line_t *asl = worker_thread->asl;
+	
+	cq = asl->cq;
+	
+	while(1) {
+	
+		if (!worker_thread->initialized) {
+			worker_thread->initialized = true;
+			pthread_mutex_lock(&asl->mutex);
+			asl->n_workers_ready++;
+			pthread_mutex_unlock(&asl->mutex);
+			wait_queue_signal(&asl->asl_ready_wq, false);
+			pthread_cond_wait(&worker_thread->worker_thread->cv, NULL);
+		}
+		
+		if (cq->elem[worker_thread->curr_slot]) {
+	
+			(worker_thread->work)( (void *) (cq->elem[worker_thread->curr_slot]) );
+			
+			if (worker_thread->last_worker_in_asl) {
+				void *finished_obj = asl->cq->elem[worker_thread->curr_slot];
+				asl->print_finished_fn(finished_obj);
+				asl->cq->elem[worker_thread->curr_slot] = NULL;
+				pthread_mutex_lock(&asl->mutex);
+				asl->cq->count--;
+				pthread_mutex_unlock(&asl->mutex);
+			}
+		}
+		worker_thread->curr_slot--;
+		pthread_mutex_lock(&asl->mutex);
+		asl->n_workers_ready++;
+		wait_queue_signal(&asl->asl_wq, false);
+		wait_queue_signal(&asl->asl_ready_wq, false);
+		pthread_mutex_unlock(&asl->mutex);
+		pthread_cond_wait(&worker_thread->worker_thread->cv, NULL);
+	}
+
+	return NULL;
+}
+
+static void
+assembly_line_start_worker_thread(asl_worker_t *worker_thread) {
+
+	run_thread(worker_thread->worker_thread,
+				worker_thread_init,
+				(void *)worker_thread);
+}
+
+static void
+assembly_line_init_worker_threads (assembly_line_t *asl) {
+
+	int i;
+	asl_worker_t *worker_thread;
+	
+	/* A dummy thread data structure created to represent the main
+	   thread i.e. the thread which is executing 'this' code
+	 */
+	thread_t *main_thread = create_thread(0, "main-thread",  THREAD_WRITER);
+	
+	for (i = 0 ; i < asl->asl_size; i++) {
+		
+		worker_thread = assembly_line_create_new_worker_thread(asl, i);
+		
+		glthread_add_next(&asl->worker_threads_head,
+						   &worker_thread->worker_thread_glue);
+						   
+		assembly_line_start_worker_thread(worker_thread);
+	}
+	
+	printf("main-thread ready for all workers to get ready\n");
+	
+	wait_queue_test_and_wait(&asl->asl_ready_wq,
+							 asl_wait_until_all_workers_ready,
+							 (void *)asl, main_thread);
+
+	printf("All worder threads ready \n");
+	
+	free(main_thread);
+	main_thread = 0;
+}
+
+assembly_line_t *
+assembly_line_get_new_assembly_line(char *asl_name, uint32_t size) {
+
+	assembly_line_t *asl = (assembly_line_t *) calloc(1, sizeof(assembly_line_t));
+	
+	strncpy(asl->asl_name, asl_name, sizeof(asl->asl_name));
+	asl->asl_size = size;
+	
+	/* initialize Circular Queue */
+	asl->cq =  initQ(size);
+	
+	/* No need for priority Q, since only the main thread - the asl
+	engine thread would going to block on this Wait Queue*/
+	wait_queue_init(&asl->asl_wq, false, 0);
+	wait_queue_set_auto_unlock_appln_mutex(&asl->asl_wq, false);
+		
+	wait_queue_init(&asl->asl_ready_wq, false, 0);
+	asl->n_workers_ready = 0;
+	
+	/* initialize Assembly line Mutex */
+	pthread_mutex_init(&asl->mutex, NULL);
+	
+	/* Thread will be created when item will be pushed into
+	ASL */
+	asl->asl_thread = NULL;
+	
+	assembly_line_init_worker_threads(asl);
+	return asl;
+}
+
+static void *
+asl_engine_fn(void *arg) {
+
+	glthread_t *curr;
+	asl_worker_t *worker_thread;
+	
+	assembly_line_t *asl = (assembly_line_t *) arg;
+	
+	do {
+		pthread_mutex_lock(&asl->mutex);
+	
+		asl->n_workers_ready = 0;
+		
+		ITERATE_GLTHREAD_BEGIN(&asl->worker_threads_head, curr) {
+		
+			worker_thread = worker_thread_glue_to_asl_worker_thread(curr);
+			pthread_cond_signal(&worker_thread->worker_thread->cv);
+		} ITERATE_GLTHREAD_END(&asl->worker_threads_head, curr)
+	
+		pthread_mutex_unlock(&asl->mutex);
+	
+		wait_queue_test_and_wait(&asl->asl_wq,
+							 asl_wait_until_all_workers_ready,
+							 (void *)asl, worker_thread->worker_thread);
+							 
+		if (asl->cq->count) {
+			pthread_mutex_unlock(&asl->mutex);
+			continue;
+		}
+		else {
+			pthread_mutex_unlock(&asl->mutex);
+			printf("Assembly line came to rest \n");
+			asl->asl_thread = NULL;
+			break;
+		}
+	} while(1);
+	
+	return NULL;
+}
+
+static void
+assembly_line_engine_start(assembly_line_t *asl) {
+
+	pthread_mutex_lock(&asl->mutex);
+	
+	if (!asl->asl_thread) {
+		asl->asl_thread = 
+			create_thread (0, "assembly_line_engine_thread", THREAD_WRITER);
+			
+		run_thread(asl->asl_thread,
+			  asl_engine_fn,
+			  (void *)asl);
+	}
+	pthread_mutex_unlock(&asl->mutex);
+}
+
+void
+assembly_line_push_new_item(assembly_line_t *asl,
+							void *new_item) {
+
+	glthread_t *curr;
+	asl_worker_t *worker_thread;
+	
+	thread_t *main_thread = create_thread (0, "main-thread",  THREAD_WRITER);
+	
+	wait_queue_test_and_wait(&asl->asl_ready_wq,
+							 asl_wait_until_all_workers_ready,
+							 (void *)asl, main_thread);
+	
+	pthread_mutex_lock(&asl->mutex);
+	enqueue(asl->cq, new_item);
+	pthread_mutex_unlock(&asl->mutex);
+	
+	assembly_line_engine_start(asl);
+	
+	free(main_thread);
+	main_thread = 0;
+}
+
+
+/* Assembly line implementation Ends here */
+
+
 /*
   Visit : www.csepracticals.com for more courses and projects
   Join Telegram Grp : telecsepracticals
