@@ -1698,6 +1698,15 @@ worker_thread_init(void *arg) {
 	
 	while(1) {
 	
+		if (!worker_thread->initialized) {
+			worker_thread->initialized = true;
+			pthread_mutex_lock(&asl->mutex);
+			asl->n_workers_ready++;
+			pthread_mutex_unlock(&asl->mutex);
+			wait_queue_signal(&asl->asl_ready_wq, false);
+			pthread_cond_wait(&worker_thread->worker_thread->cv, NULL);
+		}
+		
 		if (cq->elem[worker_thread->curr_slot]) {
 	
 			(worker_thread->work)( (void *) (cq->elem[worker_thread->curr_slot]) );
@@ -1758,7 +1767,7 @@ assembly_line_init_worker_threads (assembly_line_t *asl) {
 							 asl_wait_until_all_workers_ready,
 							 (void *)asl, main_thread);
 
-	printf("All workder threads ready \n");
+	printf("All worder threads ready \n");
 	
 	free(main_thread);
 	main_thread = 0;
@@ -1779,13 +1788,16 @@ assembly_line_get_new_assembly_line(char *asl_name, uint32_t size) {
 	engine thread would going to block on this Wait Queue*/
 	wait_queue_init(&asl->asl_wq, false, 0);
 	wait_queue_set_auto_unlock_appln_mutex(&asl->asl_wq, false);
-	asl->n_workers_finshed_opn = 0;
-	
+		
 	wait_queue_init(&asl->asl_ready_wq, false, 0);
 	asl->n_workers_ready = 0;
 	
 	/* initialize Assembly line Mutex */
 	pthread_mutex_init(&asl->mutex, NULL);
+	
+	/* Thread will be created when item will be pushed into
+	ASL */
+	asl->asl_thread = NULL;
 	
 	assembly_line_init_worker_threads(asl);
 	return asl;

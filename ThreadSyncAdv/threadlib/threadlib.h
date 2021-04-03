@@ -434,11 +434,6 @@ typedef struct assembly_line_ {
 	*/
 	wait_queue_t asl_wq;
 	/*no of worker threads finished their operation */
-	uint32_t n_workers_finshed_opn;
-	/* Used only during initialization of Assembly line (AL),
-	 Assembly line engine need to wait until all workers are
-	 initialized i.e. n_workers_ready == asl_size
-	*/
 	wait_queue_t asl_ready_wq;
 	/* no of workers ready to perform operation */
 	uint32_t n_workers_ready;
@@ -465,6 +460,7 @@ typedef struct asl_worker_ {
 	void *(*work)(void *);
 	/* Glue to Queue up worker thread in asl->worker_threads_head list*/
 	glthread_t worker_thread_glue;
+	bool initialized;
 	bool last_worker_in_asl;
 } asl_worker_t;
 GLTHREAD_TO_STRUCT(worker_thread_glue_to_asl_worker_thread,
