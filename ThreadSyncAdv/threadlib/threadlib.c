@@ -2050,7 +2050,7 @@ main(int argc, char **argv) {
     assembly_line_t *asl = assembly_line_get_new_assembly_line(
                             "Car-Manufacturing Assembly Line",
                             5,
-                            print_object_finished_fn);
+                            appln_asl_process_finished_product_fn);
 
     /*  Register worker functions for each slot */
     assembly_line_register_worker_fns(asl, 0, car_add_white_paint);
