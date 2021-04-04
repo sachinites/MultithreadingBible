@@ -36,7 +36,7 @@ typedef enum{
 
     THREAD_READER,
     THREAD_WRITER,
-	THREAD_ANY
+    THREAD_ANY
 } thread_op_type_t;
 
 typedef struct thread_{

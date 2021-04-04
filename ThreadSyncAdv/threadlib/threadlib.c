@@ -1655,7 +1655,7 @@ assembly_line_create_new_worker_thread (assembly_line_t *asl,
         (asl_worker_t *)calloc(1, sizeof(asl_worker_t));
 
     sprintf(th_name, "thread_%d", slot_no);
-    worker_thread->worker_thread = create_thread(0, th_name, THREAD_WRITER);
+    worker_thread->worker_thread = create_thread(0, th_name, THREAD_ANY);
     worker_thread->curr_slot = slot_no;
     worker_thread->asl = asl;
     init_glthread(&worker_thread->worker_thread_glue);
@@ -1755,7 +1755,7 @@ assembly_line_init_worker_threads (assembly_line_t *asl) {
     /* A dummy thread data structure created to represent the main
        thread i.e. the thread which is executing 'this' code
        */
-    thread_t *main_thread = create_thread(0, "main-thread",  THREAD_WRITER);
+    thread_t *main_thread = create_thread(0, "main-thread",  THREAD_ANY);
 
     for (i = 0 ; i < asl->asl_size; i++) {
 
@@ -1907,7 +1907,7 @@ assembly_line_engine_start(assembly_line_t *asl) {
         printf("Creating Assembly line engine thread\n");
 
         asl->asl_engine_thread = 
-            create_thread (0, "assembly_line_engine_thread", THREAD_WRITER);
+            create_thread (0, "assembly_line_engine_thread", THREAD_ANY);
 
         run_thread(asl->asl_engine_thread,
                 asl_engine_fn,
@@ -1931,12 +1931,6 @@ assembly_line_push_new_item(assembly_line_t *asl,
 
     glthread_t *curr;
     asl_worker_t *worker_thread;
-
-    /* A thread DS created to represent the current execution unit (which
-     * is executing this code right now). We shall harness the CV of this
-     * thread to block the current execution unit if required*/
-    thread_t *client_thread =
-        create_thread (0, "client-thread",  THREAD_WRITER);
 
     /* lock the ASL, since we are going to update the ASL Queue */
     pthread_mutex_lock(&asl->mutex);
@@ -1963,8 +1957,6 @@ assembly_line_push_new_item(assembly_line_t *asl,
      * */
     assembly_line_engine_start(asl);
     pthread_mutex_unlock(&asl->mutex);
-    free(client_thread);
-    client_thread = 0;
 }
 
 void
