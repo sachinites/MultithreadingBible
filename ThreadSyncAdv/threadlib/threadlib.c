@@ -1727,10 +1727,8 @@ worker_thread_init(void *arg) {
         pthread_mutex_lock(&asl->mutex);
         asl->n_workers_ready++;
         if (asl->n_workers_ready == asl->asl_size) {
-            wait_queue_signal(&asl->asl_wq, false);
+            pthread_cond_signal(&asl->asl_engine_thread->cv);
         }
-        //printf("worker thread %s done\n",
-          //      worker_thread->worker_thread->name);
         pthread_cond_wait(&worker_thread->worker_thread->cv, &asl->mutex);
         pthread_mutex_unlock(&asl->mutex);
     }
@@ -1805,11 +1803,6 @@ assembly_line_get_new_assembly_line(char *asl_name,
     /* initialize Circular Queue */
     asl->asl_q =  Fifo_initQ(size, true);
 
-    /* No need for priority Q, since only the main thread - the asl
-       engine thread would going to block on this Wait Queue*/
-    wait_queue_init(&asl->asl_wq, false, 0);
-    wait_queue_set_auto_unlock_appln_mutex(&asl->asl_wq, false);
-
     wait_queue_init(&asl->asl_ready_wq, false, 0);
     asl->n_workers_ready = 0;
 
@@ -1862,14 +1855,12 @@ asl_engine_fn(void *arg) {
             pthread_cond_signal(&worker_thread->worker_thread->cv);
         } ITERATE_GLTHREAD_END(&asl->worker_threads_head, curr)
 
-        pthread_mutex_unlock(&asl->mutex);
+        while(asl->n_workers_ready != asl->asl_size) {
 
-        /* ASL engine will wait untill all worker threads have performed
-         * a unit of operation on their respective objects */
-        wait_queue_test_and_wait(&asl->asl_wq,
-                asl_wait_until_all_workers_ready,
-                (void *)asl, worker_thread->worker_thread);
-    
+            pthread_cond_wait(&asl->asl_engine_thread->cv, &asl->mutex);
+            continue;
+        }
+
         /* ASL thread is unblocked, asl->mutex is not yet released by WQ */
         wait_lst_item =  Fifo_deque(asl->wait_lst_fq);
 

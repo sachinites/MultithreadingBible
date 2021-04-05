@@ -441,11 +441,6 @@ typedef struct assembly_line_ {
         asl_state_t asl_state;
 	/* Assembly Queue of size N */
 	Fifo_Queue_t *asl_q;
-	/* Wait-Queue, assembly line will wait for next
-	 item push until all workers have finished operation i.e.
-	 wait until n_workers_finshed_opn == Current_size of CQ
-	*/
-	wait_queue_t asl_wq;
 	/*no of worker threads finished their operation */
 	wait_queue_t asl_ready_wq;
 	/* no of workers ready to perform operation */
