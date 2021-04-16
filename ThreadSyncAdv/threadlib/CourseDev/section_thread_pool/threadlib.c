@@ -190,6 +190,11 @@ thread_pool_thread_stage3_fn(thread_pool_t *th_pool,
     glthread_add_next (&th_pool->pool_head,
                        &thread->wait_glue);
 
+    if (thread->semaphore) {
+
+        sem_post(thread->semaphore);
+    }
+
     /*  Rest in peace again in thread pool after completing the task*/
     pthread_cond_wait(&thread->cv, &th_pool->mutex);
     pthread_mutex_unlock(&th_pool->mutex);
@@ -213,13 +218,19 @@ thread_fn_execute_stage2_and_stage3 (void *arg)  {
 void
 thread_pool_dispatch_thread (thread_pool_t *th_pool,     
                              void *(*thread_fn)(void *),
-                             void *arg) {
+                             void *arg, bool block_caller) {
 
     /*  get the thread from the thread pool*/
     thread_t *thread = thread_pool_get_thread (th_pool);
 
     if (!thread) {
         return;
+    }
+
+    if (block_caller && !thread->semaphore) {
+
+        thread->semaphore = calloc(1, sizeof(sem_t));
+        sem_init(thread->semaphore, 0, 0);
     }
 
     thread_execution_data_t *thread_execution_data =
@@ -248,5 +259,14 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
 
     /*  Fire the thread now */
     thread_pool_run_thread (thread);
+
+    if (block_caller) {
+        /*  Wait for the thread to finish the Stage 2 and Stage 3 work*/
+        sem_wait(thread->semaphore);
+        /*  Caller is notified , destory the semaphore */
+        sem_destroy(thread->semaphore);
+        free(thread->semaphore);
+        thread->semaphore = NULL;
+    }
 }
 

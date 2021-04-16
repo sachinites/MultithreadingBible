@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <semaphore.h>
 
 /* When the thread is running and doing its work as normal */
 #define THREAD_F_RUNNING            (1 << 0)
@@ -62,6 +63,7 @@ typedef struct thread_{
     pthread_cond_t cv;
     /* thread Attributes */
     pthread_attr_t attributes;
+    sem_t *semaphore;
     glthread_t wait_glue;
 } thread_t;
 GLTHREAD_TO_STRUCT(wait_glue_to_thread,
@@ -131,7 +133,7 @@ thread_pool_get_thread (thread_pool_t *th_pool);
 void
 thread_pool_dispatch_thread (thread_pool_t *th_pool,     
                             void *(*thread_fn)(void *),
-                            void *arg);
+                            void *arg, bool block_caller);
 
 
 

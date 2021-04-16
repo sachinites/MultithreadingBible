@@ -177,16 +177,16 @@ thread_pool_thread_stage1_fn (thread_pool_t *th_pool,
 
     sem_t *sem0_1 = NULL;
 
-    if (block_caller) {
-        sem0_1 = calloc(1, sizeof(sem_t));
-        sem_init(sem0_1, 0, 0);
-    }
-
     /* get the thread from the thread pool*/
     thread_t *thread = thread_pool_get_thread (th_pool);
 
     if (!thread) {
         return;
+    }
+
+    if (block_caller) {
+        sem0_1 = calloc(1, sizeof(sem_t));
+        sem_init(sem0_1, 0, 0);
     }
 
     /* Cache the semaphore in the thread itself, so that when
@@ -198,9 +198,9 @@ thread_pool_thread_stage1_fn (thread_pool_t *th_pool,
         (thread_execution_data_t *)(thread->arg);
 
     if (thread_execution_data == NULL ) {
-        /* In this data structure, we would wrap up all the information
-           which thread needs to execute stage 2 ans stage 3
-           */
+    /* In this data structure, we would wrap up all the information
+        which thread needs to execute stage 2 ans stage 3
+    */
         thread_execution_data = calloc (1, sizeof(thread_execution_data_t));
     }
 

@@ -79,14 +79,14 @@ main(int argc, char **argv) {
     thread_pool_insert_new_thread(th_pool, thread1);
     thread_pool_insert_new_thread(th_pool, thread2);
 
-    thread_pool_dispatch_thread(th_pool, even_thread_work, 0);
-    thread_pool_dispatch_thread(th_pool, odd_thread_work,  0);
+    thread_pool_dispatch_thread(th_pool, even_thread_work, 0, true);
+    thread_pool_dispatch_thread(th_pool, odd_thread_work,  0, true);
 
     sleep(20);
     
     printf("Dispatching thread with new application work \n");
-    thread_pool_dispatch_thread(th_pool, even_thread_work_reverse, 0);
-    thread_pool_dispatch_thread(th_pool, odd_thread_work_reverse,  0);
+    thread_pool_dispatch_thread(th_pool, even_thread_work_reverse, 0, true);
+    thread_pool_dispatch_thread(th_pool, odd_thread_work_reverse,  0, true);
 
     pthread_exit(0);
     return 0;
