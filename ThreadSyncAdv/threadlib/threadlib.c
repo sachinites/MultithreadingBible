@@ -50,7 +50,7 @@ create_thread(thread_t *thread,
     strncpy(thread->name, name, sizeof(thread->name));  
     thread->thread_created = false;
     thread->arg = NULL;
-    thread->caller_semaphore = NULL;
+    thread->semaphore = NULL;
     thread->thread_fn = NULL;
     pthread_cond_init(&thread->cv, 0);
     pthread_attr_init(&thread->attributes);
@@ -133,8 +133,8 @@ thread_pool_thread_stage3_fn(thread_pool_t *th_pool,
 
     /* Tell the caller thread (which dispatched me from pool) that in
        am done */
-    if (thread->caller_semaphore){
-        sem_post(thread->caller_semaphore);
+    if (thread->semaphore){
+        sem_post(thread->semaphore);
     }
 
     /* Rest in peace again in thread pool after completing the task*/
@@ -191,8 +191,8 @@ thread_pool_thread_stage1_fn (thread_pool_t *th_pool,
 
     /* Cache the semaphore in the thread itself, so that when
        thread finishes the stage 3, it can notify the parent thread
-       */
-    thread->caller_semaphore = sem0_1 ? sem0_1 : NULL;
+    */
+    thread->semaphore = sem0_1 ? sem0_1 : NULL;
 
     thread_execution_data_t *thread_execution_data = 
         (thread_execution_data_t *)(thread->arg);
@@ -228,6 +228,7 @@ thread_pool_thread_stage1_fn (thread_pool_t *th_pool,
         sem_destroy(sem0_1);
         free(sem0_1);
         sem0_1 = NULL;
+        thread->semaphore = NULL;
     }
 }
 
@@ -697,7 +698,7 @@ wait_queue_test_and_wait (wait_queue_t * wq,
     return return_thread;
 }
 
-    void
+void
 wait_queue_signal (wait_queue_t * wq, bool lock_mutex)
 {
 
@@ -931,7 +932,7 @@ thread_barrier_signal_all ( th_barrier_t *barrier) {
 
     if ( barrier->is_ready_again == false ||
 
-            barrier->curr_wait_count == 0 ) {
+        barrier->curr_wait_count == 0 ) {
         pthread_mutex_unlock (&barrier->mutex);
         return;
     }

@@ -45,7 +45,7 @@ typedef struct thread_{
     bool thread_created;
     pthread_t thread;
     void *arg;
-    sem_t *caller_semaphore;
+    sem_t *semaphore;
     void *(*thread_fn)(void *);
     pthread_cond_t cv;
     pthread_attr_t attributes;
