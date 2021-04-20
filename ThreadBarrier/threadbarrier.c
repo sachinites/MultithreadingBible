@@ -23,28 +23,11 @@ thread_barrier_init ( th_barrier_t *barrier, uint32_t threshold_count) {
 }
 
 void
-thread_barrier_signal_all ( th_barrier_t *barrier) {
+thread_barrier_wait ( th_barrier_t *barrier) {
 
 	pthread_mutex_lock (&barrier->mutex);
 
-	if ( barrier->is_ready_again == false ||
-        barrier->curr_wait_count == 0 ) {
-
-		pthread_mutex_unlock (&barrier->mutex);
-		return;
-    }
-
-	pthread_cond_signal(&barrier->cv);
-	pthread_mutex_unlock (&barrier->mutex);	
-}
-
-
-void
-thread_barrier_barricade ( th_barrier_t *barrier) {
-
-	pthread_mutex_lock (&barrier->mutex);
-
-	if (barrier->is_ready_again == false ) {
+	while (barrier->is_ready_again == false ) {
 		pthread_cond_wait(&barrier->busy_cv, 
 		                  &barrier->mutex);
 	}
