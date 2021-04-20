@@ -909,7 +909,7 @@ Join Telegram Grp : telecsepracticals
 void
 thread_barrier_print(th_barrier_t *th_barrier) {
 
-    printf("th_barrier->max_count = %u\n", th_barrier->max_count);
+    printf("th_barrier->threshold = %u\n", th_barrier->threshold);
     printf("th_barrier->curr_wait_count = %u\n", th_barrier->curr_wait_count);
     printf("th_barrier->is_ready_again = %s\n", th_barrier->is_ready_again ? "true" : "false");
 }
@@ -917,7 +917,7 @@ thread_barrier_print(th_barrier_t *th_barrier) {
 void
 thread_barrier_init ( th_barrier_t *barrier, uint32_t count) {
 
-    barrier->max_count = count;
+    barrier->threshold = count;
     barrier->curr_wait_count = 0;
     pthread_cond_init(&barrier->cv, NULL);
     pthread_mutex_init(&barrier->mutex, NULL);
@@ -931,8 +931,8 @@ thread_barrier_signal_all ( th_barrier_t *barrier) {
     pthread_mutex_lock (&barrier->mutex);
 
     if ( barrier->is_ready_again == false ||
-
         barrier->curr_wait_count == 0 ) {
+
         pthread_mutex_unlock (&barrier->mutex);
         return;
     }
@@ -946,12 +946,12 @@ thread_barrier_barricade ( th_barrier_t *barrier) {
 
     pthread_mutex_lock (&barrier->mutex);
 
-    if (barrier->is_ready_again == false ) {
+    while (barrier->is_ready_again == false ) {
         pthread_cond_wait(&barrier->busy_cv, 
                 &barrier->mutex);
     }
 
-    if ( barrier->curr_wait_count + 1 == barrier->max_count ) {
+    if ( barrier->curr_wait_count + 1 == barrier->threshold ) {
 
         barrier->is_ready_again = false;
         pthread_cond_signal(&barrier->cv);

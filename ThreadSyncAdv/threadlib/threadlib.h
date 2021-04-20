@@ -265,7 +265,7 @@ wait_queue_print(wait_queue_t *wq);
 
 typedef struct th_barrier_ {
 
- 	uint32_t max_count;
+ 	uint32_t threshold;
 	uint32_t curr_wait_count;
 	pthread_cond_t cv;
 	pthread_mutex_t mutex;

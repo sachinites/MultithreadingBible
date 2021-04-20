@@ -7,7 +7,7 @@
 
 typedef struct th_barrier_ {
 
- 	uint32_t max_count;
+ 	uint32_t threshold_count;
 	uint32_t curr_wait_count;
 	pthread_cond_t cv;
 	pthread_mutex_t mutex;
@@ -16,15 +16,14 @@ typedef struct th_barrier_ {
 } th_barrier_t;
 
 void
-thread_barrier_print(th_barrier_t *th_barrier);
+thread_barrier_init ( th_barrier_t *barrier, 
+                      uint32_t threshold_count);
 
 void
-thread_barrier_init ( th_barrier_t *barrier, uint32_t count);
+thread_barrier_wait ( th_barrier_t *barrier);
+
 
 void
-thread_barrier_signal_all ( th_barrier_t *barrier);
-                     
-void
-thread_barrier_barricade ( th_barrier_t *barrier);
-                     
+thread_barrier_destroy ( th_barrier_t *barrier );
+
 #endif 
