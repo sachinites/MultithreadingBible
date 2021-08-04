@@ -135,31 +135,52 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
                             void *(*thread_fn)(void *),
                             void *arg, bool block_caller);
 
-/* Thread Barrier  Begin */
 
-typedef struct th_barrier_ {
 
-    uint32_t threshold_count;
-    uint32_t curr_wait_count;
+/* Wait Queues Implementation Starts here */
+
+typedef struct wait_queue_ {
+
+    /*  No of threads waiting in a wait-queue*/
+    uint32_t thread_wait_count;
+
+    /*  CV on which multiple threads in wait-queue are   blocked */
     pthread_cond_t cv;
-    pthread_mutex_t mutex;
-    bool is_ready_again;
-    pthread_cond_t busy_cv;
-} th_barrier_t;
+
+    /*  Application owned Mutex cached by wait-queue */
+    pthread_mutex_t *appln_mutex;
+
+} wait_queue_t;
+
+
+typedef bool (*wait_queue_condn_fn)
+      (void *appln_arg, pthread_mutex_t **out_mutex);
 
 void
-thread_barrier_init ( th_barrier_t *barrier,
-                      uint32_t threshold_count);
+wait_queue_init (wait_queue_t * wq);
+
+
+thread_t *
+wait_queue_test_and_wait (wait_queue_t *wq,
+        wait_queue_condn_fn wait_queue_block_fn_cb,
+        void *arg );
+
 
 void
-thread_barrier_wait ( th_barrier_t *barrier);
+wait_queue_signal (wait_queue_t *wq, bool lock_mutex);
 
 
 void
-thread_barrier_destroy ( th_barrier_t *barrier );
+wait_queue_broadcast (wait_queue_t *wq, bool lock_mutex);
 
 
-/* Thread Barrier End */
+void
+wait_queue_destroy (wait_queue_t *wq);
+
+
+/* Wait Queues Implementation Ends here */
+
+
 
 
 

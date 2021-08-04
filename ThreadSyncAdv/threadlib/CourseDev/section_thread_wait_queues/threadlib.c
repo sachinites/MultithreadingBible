@@ -270,60 +270,87 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
     }
 }
 
-/* Thread Barrier Implementation Begin */
+
+/* Implement Wait Queues APIs */
 
 void
-thread_barrier_init ( th_barrier_t *barrier, uint32_t threshold_count) {
+wait_queue_init (wait_queue_t * wq) {
 
-    barrier->threshold_count = threshold_count;
-    barrier->curr_wait_count = 0;
-    pthread_cond_init(&barrier->cv, NULL);
-    pthread_mutex_init(&barrier->mutex, NULL);
-    barrier->is_ready_again = true;
-    pthread_cond_init(&barrier->busy_cv, NULL);
+    wq->thread_wait_count = 0;
+    pthread_cond_init (&wq->cv, NULL);
+    wq->appln_mutex = NULL;
 }
 
 
-void
-thread_barrier_wait ( th_barrier_t *barrier) {
+thread_t *
+wait_queue_test_and_wait (wait_queue_t *wq,
+                      wait_queue_condn_fn wait_queue_condn_fn_cb,
+                      void *arg ) {
+          
+    bool should_block;
+    pthread_mutex_t *locked_appln_mutex = NULL;
 
-    pthread_mutex_lock (&barrier->mutex);
+    should_block = wait_queue_condn_fn_cb (arg, 
+            &locked_appln_mutex);
 
-    while (barrier->is_ready_again == false ) {
-        pthread_cond_wait(&barrier->busy_cv,
-                &barrier->mutex);
+    wq->appln_mutex = locked_appln_mutex; 
+
+    while (should_block)
+    {
+        wq->thread_wait_count++;
+        pthread_cond_wait (&wq->cv, wq->appln_mutex);
+        wq->thread_wait_count--;
+        should_block = wait_queue_condn_fn_cb (arg, NULL);
     }
+}
 
-    if ( barrier->curr_wait_count + 1 == barrier->threshold_count ) {
+void
+wait_queue_signal (wait_queue_t *wq, bool lock_mutex) {
 
-        barrier->is_ready_again = false;
-        pthread_cond_signal(&barrier->cv);
-        pthread_mutex_unlock (&barrier->mutex);
+    if (!wq->appln_mutex) return;
+
+    if (lock_mutex) pthread_mutex_lock(wq->appln_mutex);
+
+    if (!wq->thread_wait_count) {
+        if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
         return;
     }
 
-    barrier->curr_wait_count++;
-    pthread_cond_wait(&barrier->cv, &barrier->mutex);
-    barrier->curr_wait_count--;
+    pthread_cond_signal (&wq->cv);
 
-    if (barrier->curr_wait_count == 0) {
-        barrier->is_ready_again = true;
-        pthread_cond_broadcast(&barrier->busy_cv);
-    }
-    else {
-        pthread_cond_signal(&barrier->cv);
-    }
-    pthread_mutex_unlock (&barrier->mutex);
+    if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 }
+
 
 void
-thread_barrier_destroy ( th_barrier_t *barrier ) {
+wait_queue_broadcast (wait_queue_t *wq, bool lock_mutex) {
 
-    assert(barrier->curr_wait_count == 0);
-    pthread_cond_destroy(&barrier->cv);
-    pthread_mutex_destroy(&barrier->mutex);
-    assert(barrier->is_ready_again == true);
-    pthread_cond_destroy(&barrier->busy_cv);
+    if (!wq->appln_mutex) return;
+
+    if (lock_mutex) pthread_mutex_lock(wq->appln_mutex);
+
+    if (!wq->thread_wait_count) {
+        if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
+        return;
+    }
+
+    pthread_cond_broadcast (&wq->cv);
+
+    if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 }
 
-/* Thread Barrier Implementation End */
+
+void
+wait_queue_destroy (wait_queue_t *wq) {
+
+    pthread_cond_destroy(&wq->cv);
+    wq->appln_mutex = NULL;
+}
+
+
+
+
+
+
+
+
