@@ -20,6 +20,7 @@ typedef struct wait_queue_
   pthread_cond_t cv;
  /* Application owned Mutex cached by wait-queue */ 
   pthread_mutex_t *appln_mutex;
+  
 } wait_queue_t;
 
 
