@@ -197,33 +197,49 @@ typedef struct map_reduce_ {
 
     /* No of mappers */
     uint8_t n_mappers;
+    
+    /* Application Data */
+    mr_iovec_t *app_data;
+    /* Split input data, and put a chunk of them in 
+        mapper_input_array */
+    void (*input_data_splitter)(mr_iovec_t *, mr_iovec_t **, int);
+
+    /* Mappers specific attributes */   
+
     /* Mapper function */
     void  (*mapper_fn)(thread_t *, mr_iovec_t *, mr_iovec_t **);
     /* No of mappers in progress */
     uint8_t mappers_in_progress;
     /* Mutex to update map-reduce state*/
     pthread_mutex_t mr_mutex;
-    /* Wait Queue until all mapers have inished */
+    /* Wait Queue until all mapers have finished */
     wait_queue_t wq_until_all_mappers_finish;
-    /* Reducer function */
-    void (*reducer_fn)(thread_t *, mr_iovec_t **, int, mr_iovec_t *);
-    /* Zero semaphore to wait until reducer is finished */
-    sem_t reducer_finished_semaphore;
-    /* True if reducer is in progress */
-    bool is_reducer_in_progress;
-    /* Final reducer result */
-    mr_iovec_t reducer_result;
-    /* Reducer ourput reading function */
-    void (*reducer_output_reader)(mr_iovec_t *iovec);
     /* Mapper input input array */
     mr_iovec_t *mapper_input_array[MAP_REDUCE_MAX_MAPPER];
     /* Mapper result array */
     mr_iovec_t *mapper_result_array[MAP_REDUCE_MAX_MAPPER];
     /* Mapper fn array */
     thread_t *mapper_thread_array[MAP_REDUCE_MAX_MAPPER];
+
+    /* Reducer Specific Attributes */
+
     /* reducer Thread */
     thread_t *reducer_thread;
+    /* Final reducer result */
+    mr_iovec_t reducer_result;
+        /* Reducer function */
+    void (*reducer_fn)(thread_t *, mr_iovec_t **, int, mr_iovec_t *);
+    /* Zero semaphore to wait until reducer is finished */
+    sem_t reducer_finished_semaphore;
+    /* True if reducer is in progress */
+    bool is_reducer_in_progress;
+    /* Reducer ourput reading function */
+    void (*reducer_output_reader)(mr_iovec_t *iovec);
 
+    /* clean up functions */
+    void (*mapper_input_array_cleanup)(mr_iovec_t *);
+    void (*mapper_output_array_cleanup)(mr_iovec_t *);
+    void (*reducer_output_cleanup)(mr_iovec_t *);
 } map_reduce_t;
 
 /* Map-Reduce Implementation Ends Here */
@@ -232,8 +248,18 @@ map_reduce_t *
 map_reduce_init(uint8_t n_mappers);
 
 void
+map_reduce_set_data_splitter(map_reduce_t *mr, 
+                                                 void (*input_data_splitter)(mr_iovec_t *, mr_iovec_t **, int));
+
+void
+map_reduce_set_app_data(map_reduce_t *mr, mr_iovec_t *app_data);
+
+void
 map_reduce_set_mapper_fn (map_reduce_t *mr,
                                     void (*mapper_fn)(thread_t *, mr_iovec_t *, mr_iovec_t **));
+
+void 
+map_reduce_set_mapper_input(map_reduce_t *mr, int index, mr_iovec_t *input);
 
 void
 map_reduce_set_reducer_fn (map_reduce_t *mr, 

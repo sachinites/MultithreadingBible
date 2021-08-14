@@ -387,6 +387,19 @@ map_reduce_init(uint8_t n_mappers) {
 }
 
 void
+map_reduce_set_data_splitter(map_reduce_t *mr, 
+                                                 void (*input_data_splitter)(mr_iovec_t *, mr_iovec_t **, int)) {
+                                                    
+    mr->input_data_splitter = input_data_splitter;
+}
+
+void
+map_reduce_set_app_data(map_reduce_t *mr, mr_iovec_t *app_data) {
+
+    mr->app_data = app_data;
+}
+
+void
 map_reduce_set_mapper_fn (map_reduce_t *mr,
                                              void (*mapper_fn)(thread_t *, mr_iovec_t *, mr_iovec_t **)) {
 
@@ -432,11 +445,21 @@ static bool
  map_reduce_cleanup(map_reduce_t *mr) {
 
     int i = 0;
+
      for (i = 0; i < mr->n_mappers; i++) {
 
-         if (mr->mapper_result_array[i]) {
-             free(mr->mapper_result_array[i]->base);
-             free(mr->mapper_result_array[i]);
+         if (mr->mapper_input_array [i] &&
+                mr->mapper_input_array_cleanup ) {
+             mr->mapper_input_array_cleanup(mr->mapper_input_array[i]);
+             mr->mapper_input_array[i] = NULL;
+         }
+     }
+
+    for (i = 0; i < mr->n_mappers; i++) {
+
+         if (mr->mapper_result_array[i] &&
+                mr->mapper_output_array_cleanup ) {
+             mr->mapper_output_array_cleanup(mr->mapper_result_array[i]);
              mr->mapper_result_array[i] = NULL;
          }
      }
@@ -444,14 +467,13 @@ static bool
      for (i = 0; i < mr->n_mappers; i++){
 
          if (mr->mapper_thread_array[i] ) { 
-             free(mr->mapper_thread_array[i]);
              thread_free(mr->mapper_thread_array[i]);
              mr->mapper_thread_array[i] = NULL;
          }
      }
 
-     if (mr->reducer_result.base) {
-         free(mr->reducer_result.base);
+     if (mr->reducer_result.data_len && mr->reducer_output_cleanup) {
+         mr->reducer_output_cleanup(&mr->reducer_result);
          mr->reducer_result.base = NULL;
          mr->reducer_result.data_len = 0;
      }
@@ -464,7 +486,7 @@ static bool
 
 typedef struct mapper_data_ {
 
-    int mapper_id;
+    int mapper_index;
     thread_t *mapper_thread;
     map_reduce_t *mr;
 } mapper_data_t;
@@ -479,8 +501,8 @@ mapper_wrapper(void *arg) {
     mr = map_data->mr;
     printf("Mapper %s Start\n", thread->name);
     map_data->mr->mapper_fn(
-                thread, mr->mapper_input_array[map_data->mapper_id],
-                &mr->mapper_result_array[map_data->mapper_id] );
+                thread, mr->mapper_input_array[map_data->mapper_index],
+                &mr->mapper_result_array[map_data->mapper_index] );
     pthread_mutex_lock(&mr->mr_mutex);
     mr->mappers_in_progress--;
     printf("Mapper %s Done\n", thread->name);
@@ -521,6 +543,10 @@ map_reduce_start (map_reduce_t *mr) {
     assert(mr->mappers_in_progress == mr->n_mappers);
     assert(mr->mapper_fn);
 
+    mr->input_data_splitter(mr->app_data,
+                                            mr->mapper_input_array,
+                                            mr->n_mappers);
+
     mr->mappers_in_progress = mr->n_mappers;
 
     for (i = 0; i < mr->n_mappers; i++) {
@@ -529,10 +555,10 @@ map_reduce_start (map_reduce_t *mr) {
         sprintf(thread_name, "Mapper_%d", i);
         mr->mapper_thread_array[i] = thread_create(0, thread_name);
         map_data = calloc(1, sizeof (mapper_data_t));
-        map_data->mapper_id = i;
+        map_data->mapper_index = i;
         map_data->mapper_thread =  mr->mapper_thread_array[i];
         map_data->mr = mr;
-        thread_run(mr->mapper_thread_array[i],  
+        thread_run(mr->mapper_thread_array[i], 
                             mapper_wrapper, 
                             (void *)map_data);
     }
@@ -551,7 +577,11 @@ map_reduce_start (map_reduce_t *mr) {
                             (void *) mr );
 
     sem_wait(&mr->reducer_finished_semaphore);
-    mr->reducer_output_reader(&mr->reducer_result);
+
+    /* output reader is optional */
+    if (mr->reducer_output_reader) {
+        mr->reducer_output_reader(&mr->reducer_result);
+    }
     map_reduce_cleanup(mr);
 }
 
