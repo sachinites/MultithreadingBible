@@ -275,6 +275,12 @@ map_reduce_start(map_reduce_t *mr);
 bool
 map_reduce_is_in_progress(map_reduce_t *mr);
 
+void
+map_reduce_register_cleanup_fns(map_reduce_t *mr,
+                void (*mapper_input_array_cleanup)(mr_iovec_t *),
+                void (*mapper_output_array_cleanup)(mr_iovec_t *),
+                void (*reducer_output_cleanup)(mr_iovec_t *));
+
 #endif /* __THREAD_LIB__  */
 
 /*

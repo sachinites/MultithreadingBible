@@ -12,7 +12,6 @@
   gcc -g -c gluethread/glthread.c -o gluethread/glthread.o
   gcc -g -c mr_demo.c -o mr_demo.o
   gcc -g threadlib.o mr_demo.o gluethread/glthread.o -o exe -lpthread
-  
   */
 void
 app_mapper_fn(thread_t *thread, mr_iovec_t *input, mr_iovec_t **output) {
@@ -39,6 +38,7 @@ app_reducer_output_reader (mr_iovec_t *data) {
 void
 file_splitter(mr_iovec_t *app_data, mr_iovec_t **output, int arr_size) {
 
+
 }
 
 int 
@@ -50,6 +50,7 @@ main(int argc, char *argv) {
     map_reduce_set_mapper_fn(mr, app_mapper_fn);
     map_reduce_set_reducer_fn(mr, app_reducer_fn);
     map_reduce_set_reducer_output_reader (mr, app_reducer_output_reader);
+    map_reduce_register_cleanup_fns(mr, 0, 0, 0);
     map_reduce_start(mr);
     return 0;
 }

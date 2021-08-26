@@ -484,6 +484,19 @@ static bool
      }
  }
 
+
+void
+map_reduce_register_cleanup_fns(map_reduce_t *mr,
+                void (*mapper_input_array_cleanup)(mr_iovec_t *),
+                void (*mapper_output_array_cleanup)(mr_iovec_t *),
+                void (*reducer_output_cleanup)(mr_iovec_t *)) {
+
+    mr->mapper_input_array_cleanup = mapper_input_array_cleanup;
+    mr->mapper_output_array_cleanup = mapper_output_array_cleanup;
+    mr->reducer_output_cleanup = reducer_output_cleanup;    
+}
+
+
 typedef struct mapper_data_ {
 
     int mapper_index;
