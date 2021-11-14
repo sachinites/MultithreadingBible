@@ -35,6 +35,7 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
             pthread_cond_wait(&rw_lock->cv, &rw_lock->mutex_lock_status);
         }
         rw_lock->n++;
+        rw_lock->lock_status = read_lock_t;
         pthread_mutex_unlock(&rw_lock->mutex_lock_status);
         return;
     }
@@ -87,6 +88,7 @@ pthread_mutex_lock(&rw_lock->mutex_lock_status);
             pthread_cond_wait(&rw_lock->cv, &rw_lock->mutex_lock_status);
         }
         rw_lock->n++;
+        rw_lock->lock_status = write_lock_t;
         pthread_mutex_unlock(&rw_lock->mutex_lock_status);
         return;
     }
