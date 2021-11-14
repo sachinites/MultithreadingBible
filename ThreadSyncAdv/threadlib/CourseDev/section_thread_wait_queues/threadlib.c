@@ -318,6 +318,7 @@ wait_queue_test_and_wait (wait_queue_t *wq,
          to test the predicate without locking any mutex */
         should_block = wait_queue_condn_fn_cb (arg, NULL);
     }
+    return NULL;
 }
 
 void
