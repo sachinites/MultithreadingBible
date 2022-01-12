@@ -274,11 +274,13 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
 /* Implement Wait Queues APIs */
 
 void
-wait_queue_init (wait_queue_t * wq) {
+wait_queue_init (wait_queue_t * wq, bool is_fifo) {
 
     wq->thread_wait_count = 0;
     pthread_cond_init (&wq->cv, NULL);
     wq->appln_mutex = NULL;
+    init_glthread(&wq->fifo_thread_q);
+    wq->is_fifo_enabled = is_fifo;
 }
 
 /* All the majic of the Wait-Queue Thread-Synch Data structure lies in this
@@ -290,6 +292,7 @@ wait_queue_test_and_wait (wait_queue_t *wq,
                       wait_queue_condn_fn wait_queue_condn_fn_cb,
                       void *arg ) {
           
+    cv_t *cv = NULL;
     bool should_block;
     pthread_mutex_t *locked_appln_mutex = NULL;
 
@@ -307,8 +310,22 @@ wait_queue_test_and_wait (wait_queue_t *wq,
   the calling thread by invoking pthread_cond_wait*/
     while (should_block)
     {
+        if (wq->is_fifo_enabled) {
+            if (!cv) cv = cv_get_new_cv();
+            glthread_add_last(&wq->fifo_thread_q, &cv->glue);
+        }
+
         wq->thread_wait_count++;
-        pthread_cond_wait (&wq->cv, wq->appln_mutex);
+
+        if (wq->is_fifo_enabled) {
+            printf ("Thread blocked on CV %d \n", cv->id);
+            pthread_cond_wait (&cv->cv, wq->appln_mutex);
+            remove_glthread(&cv->glue);
+        }
+        else {
+            pthread_cond_wait (&wq->cv, wq->appln_mutex);
+        }
+
         wq->thread_wait_count--;
         /* The thread wakes up, retest the predicate again to 
          handle spurious wake up. Not that, appln need not test the
@@ -317,6 +334,10 @@ wait_queue_test_and_wait (wait_queue_t *wq,
          Hence Pass NULL as 2nd arg which hints the application that it has
          to test the predicate without locking any mutex */
         should_block = wait_queue_condn_fn_cb (arg, NULL);
+    }
+    if (cv) {
+        printf ("Thread waiting on CV %d signaled\n", cv->id);
+        free(cv);
     }
     return NULL;
 }
@@ -333,8 +354,18 @@ wait_queue_signal (wait_queue_t *wq, bool lock_mutex) {
         return;
     }
 
-    pthread_cond_signal (&wq->cv);
+    if (wq->is_fifo_enabled) {
 
+        glthread_t *glnode = dequeue_glthread_first(&wq->fifo_thread_q);
+        if (!glnode) goto done;
+        cv_t *cv = glnode_to_cv(glnode);
+        pthread_cond_signal (&cv->cv);
+    }
+    else {
+        pthread_cond_signal (&wq->cv);
+    }
+
+    done:
     if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 }
 
@@ -351,7 +382,17 @@ wait_queue_broadcast (wait_queue_t *wq, bool lock_mutex) {
         return;
     }
 
-    pthread_cond_broadcast (&wq->cv);
+    if (wq->is_fifo_enabled){
+
+        glthread_t *glnode;
+        while(glnode = dequeue_glthread_first(&wq->fifo_thread_q)) {
+            cv_t *cv = glnode_to_cv(glnode);
+            pthread_cond_signal (&cv->cv);
+        }
+    }
+    else {
+        pthread_cond_broadcast (&wq->cv);
+    }
 
     if (lock_mutex) pthread_mutex_unlock(wq->appln_mutex);
 }

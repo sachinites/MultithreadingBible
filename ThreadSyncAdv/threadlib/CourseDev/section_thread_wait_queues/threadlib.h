@@ -138,6 +138,25 @@ thread_pool_dispatch_thread (thread_pool_t *th_pool,
 
 
 /* Wait Queues Implementation Starts here */
+typedef struct cv_ {
+
+    int id;
+    pthread_cond_t cv;
+    glthread_t glue; /* list node */
+} cv_t;
+
+static inline cv_t *
+cv_get_new_cv () {
+    static int cv_id = 0;
+    cv_t *cv = (cv_t *)calloc(1, sizeof(cv_t));
+    pthread_cond_init(&cv->cv, NULL);
+    init_glthread(&cv->glue);
+    cv_id++;
+    cv->id = cv_id;
+    return cv;
+}
+
+GLTHREAD_TO_STRUCT(glnode_to_cv, cv_t , glue);
 
 typedef struct wait_queue_ {
 
@@ -150,6 +169,10 @@ typedef struct wait_queue_ {
     /*  Application owned Mutex cached by wait-queue */
     pthread_mutex_t *appln_mutex;
 
+    /* Head of FIFO Queue of CVs on which threads are blocked */
+    glthread_t fifo_thread_q;
+    /* Is this WQ a FIFO WQ */
+    bool is_fifo_enabled;
 } wait_queue_t;
 
 
@@ -157,7 +180,7 @@ typedef bool (*wait_queue_condn_fn)
       (void *appln_arg, pthread_mutex_t **out_mutex);
 
 void
-wait_queue_init (wait_queue_t * wq);
+wait_queue_init (wait_queue_t * wq, bool is_fifo);
 
 
 thread_t *

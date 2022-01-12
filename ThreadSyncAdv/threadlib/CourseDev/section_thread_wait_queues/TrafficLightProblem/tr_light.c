@@ -17,7 +17,7 @@ tr_light_init(tr_light_t *tr_light) {
              tr_light->tr_light_face[dirn].light[YELLOW] = false;
              tr_light->tr_light_face[dirn].light[GREEN] = false;
             pthread_mutex_init(&tr_light->tr_light_face[dirn].mutex, NULL);
-            wait_queue_init(&tr_light->tr_light_face[dirn].wq);
+            wait_queue_init(&tr_light->tr_light_face[dirn].wq, false);
         }
 }
 
