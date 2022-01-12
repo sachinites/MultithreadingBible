@@ -70,7 +70,7 @@ rw_lock_rd_unlock (rw_lock_t *rw_lock) {
 void
 rw_lock_wr_lock (rw_lock_t *rw_lock) {
 
-pthread_mutex_lock(&rw_lock->mutex_lock_status);
+    pthread_mutex_lock(&rw_lock->mutex_lock_status);
 
     if (rw_lock->lock_status == unlock_t) {
         rw_lock->lock_status = write_lock_t;
@@ -80,7 +80,7 @@ pthread_mutex_lock(&rw_lock->mutex_lock_status);
     }
 
     if (rw_lock->lock_status == write_lock_t ||
-        rw_lock->lock_status == read_lock_t) {
+         rw_lock->lock_status == read_lock_t) {
 
         while (rw_lock->lock_status == write_lock_t ||
                rw_lock->lock_status == read_lock_t) {
