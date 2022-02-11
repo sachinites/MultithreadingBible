@@ -2,20 +2,23 @@
 #define __REC_MUTEX__
 
 #include <pthread.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 typedef struct rec_mutex_ {
 
-    /* Actual underlying mutex */
-    pthread_mutex_t mutex;
-    /* No of times it has been locked */
-    int n;
+    /* No of locks taken */
+    uint16_t n;
+    /* pthread id of the thread which owns this mutex*/
     pthread_t locking_thread;
-    pthread_mutex_t rec_state_mutex;
+    /* A CV to make the threads block */
+    pthread_cond_t cv;
+    /* A Mutex to manupulate the state of this structure
+    in a mutually exclusive way */
+    pthread_mutex_t state_mutex;
+    /* Somebody else is waiting for this Mutex */
+    bool somebody_else_waiting;
 } rec_mutex_t;
-
-/* Note is this recursive mutex is used along with CV, then use below macro
-to get the actual hidden mutex to be paired up with CV */
-#define MUTEX(rec_mutex_ptr)    ((rec_mutex_ptr)->mutex)
 
 void
 rec_mutex_init(rec_mutex_t *rec_mutex) ;
