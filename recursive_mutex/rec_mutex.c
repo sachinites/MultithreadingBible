@@ -99,7 +99,7 @@ rec_mutex_unlock(rec_mutex_t *rec_mutex) {
     }
 }
 
-
+#if 0
 int
 main(int argc, char **argv) {
 
@@ -115,3 +115,4 @@ main(int argc, char **argv) {
     printf("rec_mutex->n = %d, locking thread = %lu, somebody waiting = %d\n", rec_mutex.n, rec_mutex.locking_thread, rec_mutex.n_waited);
     return 0;
 }
+#endif
