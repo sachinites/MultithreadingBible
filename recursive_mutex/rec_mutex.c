@@ -41,9 +41,9 @@ rec_mutex_lock(rec_mutex_t *rec_mutex) {
 
             rec_mutex->n_waited++;
             pthread_cond_wait(&rec_mutex->cv, &rec_mutex->state_mutex);
+            rec_mutex->n_waited--;
    }
 
-    rec_mutex->n_waited--;
     /* Sanity check that lock has been really released */
     assert(rec_mutex->n == 0);
     assert(rec_mutex->locking_thread == 0);
