@@ -18,7 +18,7 @@ read_thread_fn (void *arg) {
         //usleep(1000);
 
         printf("Reader thread %p leaving the C.S.\n", pthread_self());
-        rw_lock_rd_unlock(&rw_lock);
+        rw_lock_unlock(&rw_lock);
         printf("Reader thread %p left the C.S.\n", pthread_self());
     }
 }
@@ -37,7 +37,7 @@ write_thread_fn (void *arg) {
         //usleep(1000);
 
         printf("Writer thread %p leaving the C.S.\n", pthread_self());
-        rw_lock_wr_unlock(&rw_lock);
+        rw_lock_unlock(&rw_lock);
         printf("Writer thread %p left the C.S.\n", pthread_self());
     }
 }
@@ -52,4 +52,5 @@ main(int argc, char **argv) {
     pthread_create(&th3, NULL, write_thread_fn, NULL);
     pthread_create(&th4, NULL, write_thread_fn, NULL);
     pthread_exit(0);
+    return 0;
 }

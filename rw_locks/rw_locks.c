@@ -1,5 +1,5 @@
 #include <assert.h>
-#include "rw_locks2.h"
+#include "rw_locks.h"
 
 void
 rw_lock_init (rw_lock_t *rw_lock) {
@@ -76,6 +76,8 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
     /* Lock is still locked by some reader/writer thread */
     if (rw_lock->n_locks > 0) {
+
+        pthread_mutex_unlock(&rw_lock->state_mutex);
         return;
     }
 
@@ -92,6 +94,7 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
             pthread_cond_broadcast(&rw_lock->cv);
             pthread_mutex_unlock(&rw_lock->state_mutex);
         }
+        pthread_mutex_unlock(&rw_lock->state_mutex);
         return;
     }
 
@@ -101,16 +104,16 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
             assert(rw_lock->writer_thread == pthread_self());
 
             rw_lock->is_locked_by_writer = false;
-            rw_lock->writer_thread = NULL;
+            rw_lock->writer_thread =0;
 
              /* Yes, it is possible we can have Readers Or Writers Waiting */
             if (rw_lock->n_reader_waiting ||
                  rw_lock->n_writer_waiting) {
 
                 pthread_cond_broadcast(&rw_lock->cv);
-                pthread_mutex_unlock(&rw_lock->state_mutex);
-                return;
             }
+            pthread_mutex_unlock(&rw_lock->state_mutex);
+            return;
         }
         else {
             /* Locked by neither Reader nor Writer */
@@ -160,7 +163,7 @@ rw_lock_wr_lock (rw_lock_t *rw_lock) {
         if (rw_lock->is_locked_by_reader) {
             assert(rw_lock->is_locked_by_writer == false);
             assert(rw_lock->n_locks);
-            assert(rw_lock->writer_thread == NULL);
+            assert(rw_lock->writer_thread == 0);
         } else if (rw_lock->is_locked_by_writer) {
             assert(rw_lock->is_locked_by_reader == false);
             assert(rw_lock->n_locks);
