@@ -3,22 +3,30 @@
 
 #include <pthread.h>
 #include <stdint.h>
+#include <stdbool.h>
 
-typedef enum lock_type_ {
+typedef struct rwlock_ {
 
-	read_lock_t,
-	write_lock_t,
-	unlock_t
-} lock_type_t;
-
-typedef struct rw_lock_ {
-
-	lock_type_t lock_status;
-	pthread_mutex_t mutex_lock_status;
-	pthread_cond_t cv;
-	uint16_t n;  /* no of threads in C.S. */
-} rw_lock_t;
-
+    /* A Mutex to manipulate/inspect the state of rwlock 
+    in a mutually exclusive way */
+    pthread_mutex_t state_mutex;
+    /* A CV to block the the threads when the lock is not
+    available */
+    pthread_cond_t cv;
+    /* Count of number of concurrent threads executing inside C.S. */
+    uint16_t n_locks;
+    /* No of reader threads waiting for the lock grant*/
+    uint16_t n_reader_waiting;
+    /* No of writer threads waiting for the lock grant*/
+    uint16_t n_writer_waiting;
+    /* Is locked currently occupied by Reader threads */
+    bool is_locked_by_reader;
+    /* Is locked currently occupied by a Writer thread */
+    bool is_locked_by_writer;
+    /* Thread handle of the writer thread currently holding the lock
+    It is 0 if lock is not being held by writer thread */
+    pthread_t writer_thread;
+}rw_lock_t;
 
 void
 rw_lock_init (rw_lock_t *rw_lock);
@@ -27,12 +35,12 @@ void
 rw_lock_rd_lock (rw_lock_t *rw_lock);
 
 void
-rw_lock_rd_unlock (rw_lock_t *rw_lock) ;
-
-void
 rw_lock_wr_lock (rw_lock_t *rw_lock);
 
 void
-rw_lock_wr_unlock (rw_lock_t *rw_lock) ;
+rw_lock_unlock (rw_lock_t *rw_lock) ;
+
+void
+rw_lock_destroy(rw_lock_t *rw_lock);
 
 #endif 
