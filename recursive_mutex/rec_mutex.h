@@ -7,7 +7,7 @@
 
 typedef struct rec_mutex_ {
 
-    /* No of locks taken */
+    /* No of self-locks taken */
     uint16_t n;
     /* pthread id of the thread which owns this mutex*/
     pthread_t locking_thread;
@@ -16,8 +16,8 @@ typedef struct rec_mutex_ {
     /* A Mutex to manupulate the state of this structure
     in a mutually exclusive way */
     pthread_mutex_t state_mutex;
-    /* Somebody else is waiting for this Mutex */
-    bool somebody_else_waiting;
+    /* No of threads waiting for this Mutex lock Grant */
+    uint16_t n_waited;;
 } rec_mutex_t;
 
 void

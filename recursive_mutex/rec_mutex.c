@@ -9,7 +9,7 @@ rec_mutex_init(rec_mutex_t *rec_mutex)  {
     rec_mutex->locking_thread = 0;
     pthread_cond_init(&rec_mutex->cv, NULL);
     pthread_mutex_init(&rec_mutex->state_mutex, NULL);
-    rec_mutex->somebody_else_waiting = false;
+    rec_mutex->n_waited = 0;
 }
 
 void
@@ -39,11 +39,12 @@ rec_mutex_lock(rec_mutex_t *rec_mutex) {
    while (rec_mutex->locking_thread &&
               rec_mutex->locking_thread != pthread_self()) {
 
-            rec_mutex->somebody_else_waiting = true;
+            rec_mutex->n_waited++;
             pthread_cond_wait(&rec_mutex->cv, &rec_mutex->state_mutex);
    }
 
-    assert(rec_mutex->somebody_else_waiting == true);
+    rec_mutex->n_waited--;
+    /* Sanity check that lock has been really released */
     assert(rec_mutex->n == 0);
     assert(rec_mutex->locking_thread == 0);
 
@@ -51,7 +52,6 @@ rec_mutex_lock(rec_mutex_t *rec_mutex) {
     the recursive mutex as locked by self */
     rec_mutex->n = 1;
     rec_mutex->locking_thread = pthread_self();
-    rec_mutex->somebody_else_waiting = false;
     pthread_mutex_unlock(&rec_mutex->state_mutex);
 }
 
@@ -79,7 +79,7 @@ rec_mutex_unlock(rec_mutex_t *rec_mutex) {
         }
 
         /* Current thread has completely released the mutex, send signal if required so that other thread waiting for this mutex can resume */
-        if (rec_mutex->somebody_else_waiting) {
+        if (rec_mutex->n_waited) {
             pthread_cond_signal(&rec_mutex->cv);
         }
 
@@ -108,10 +108,10 @@ main(int argc, char **argv) {
     rec_mutex_lock(&rec_mutex);
     rec_mutex_lock(&rec_mutex);
     rec_mutex_lock(&rec_mutex);
-    printf("rec_mutex->n = %d, locking thread = %lu, somebody waiting = %d\n", rec_mutex.n, rec_mutex.locking_thread, rec_mutex.somebody_else_waiting);
+    printf("rec_mutex->n = %d, locking thread = %lu, n_waited = %d\n", rec_mutex.n, rec_mutex.locking_thread, rec_mutex.n_waited);
     rec_mutex_unlock(&rec_mutex);
     rec_mutex_unlock(&rec_mutex);
     rec_mutex_unlock(&rec_mutex);
-    printf("rec_mutex->n = %d, locking thread = %lu, somebody waiting = %d\n", rec_mutex.n, rec_mutex.locking_thread, rec_mutex.somebody_else_waiting);
+    printf("rec_mutex->n = %d, locking thread = %lu, somebody waiting = %d\n", rec_mutex.n, rec_mutex.locking_thread, rec_mutex.n_waited);
     return 0;
 }
