@@ -99,6 +99,17 @@ rec_mutex_unlock(rec_mutex_t *rec_mutex) {
     }
 }
 
+void
+rec_mutex_destroy(rec_mutex_t *rec_mutex) {
+
+    assert(!rec_mutex->n);
+    assert(!rec_mutex->locking_thread);
+    assert(!rec_mutex->n_waited);
+    pthread_mutex_destroy(&rec_mutex->state_mutex);
+    pthread_cond_destroy(&rec_mutex->cv);
+}
+
+
 #if 0
 int
 main(int argc, char **argv) {

@@ -29,4 +29,7 @@ rec_mutex_lock(rec_mutex_t *rec_mutex);
 void
 rec_mutex_unlock(rec_mutex_t *rec_mutex);
 
+void
+rec_mutex_destroy(rec_mutex_t *rec_mutex);
+
 #endif
