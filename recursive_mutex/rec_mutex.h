@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+
 typedef struct rec_mutex_ {
 
     /* No of self-locks taken */
@@ -14,10 +15,10 @@ typedef struct rec_mutex_ {
     /* A CV to make the threads block */
     pthread_cond_t cv;
     /* A Mutex to manupulate the state of this structure
-    in a mutually exclusive way */
+        in a mutually exclusive way */
     pthread_mutex_t state_mutex;
-    /* No of threads waiting for this Mutex lock Grant */
-    uint16_t n_waited;;
+    /* /* No of threads waiting for this Mutex lock Grant */
+    uint16_t n_waited;
 } rec_mutex_t;
 
 void
