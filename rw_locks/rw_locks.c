@@ -69,55 +69,78 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
     pthread_mutex_lock(&rw_lock->state_mutex);
 
-    /* Attempt to unlock the unlocked lock */
+    /* case 1 : Attempt to unlock the unlocked lock */
     assert(rw_lock->n_locks);
 
-    rw_lock->n_locks--;
+    /* Case 2 : Writer thread unlocking the rw_lock */
+    if (rw_lock->is_locked_by_writer) {
 
-    /* Lock is still locked by some reader(s) Or Writer thread including recursive locking */
-    if (rw_lock->n_locks > 0) {
-        pthread_mutex_unlock(&rw_lock->state_mutex);
-        return;
-    }
+        /* Only the owner of the rw_lock must attempt to unlock the rw_lock*/
+        assert(pthread_self() == rw_lock->writer_thread);
+        assert(rw_lock->is_locked_by_reader == false);
 
-    /* Case 1 : Last reader has unlocked the lock */
-    if (rw_lock->is_locked_by_reader)
-    {
-        rw_lock->is_locked_by_reader = false;
+        rw_lock->n_locks--;
+        
+        if (rw_lock->n_locks) {
+             pthread_mutex_unlock(&rw_lock->state_mutex);
+             return;
+        }
 
-        /* Yes, it is possible we can have a writer Or Reader threads Waiting, if
-            yes, then broadcast */
         if (rw_lock->n_reader_waiting ||
-             rw_lock->n_writer_waiting) {
-                 
+            rw_lock->n_writer_waiting) {
+
             pthread_cond_broadcast(&rw_lock->cv);
         }
+
+        rw_lock->is_locked_by_writer = false;
+        rw_lock->writer_thread = 0;
         pthread_mutex_unlock(&rw_lock->state_mutex);
         return;
     }
 
-        /* Case 2 : Last Writer ( the only writer) has unlocked the lock */
-        else if (rw_lock->is_locked_by_writer) {
+    /* Case 3 : Reader Thread trying to unlock the rw_lock */
+    /* Note : Case 3 cannot be moved before Case 2. I leave it to you
+        for reasoning.. */
 
-            assert(rw_lock->writer_thread == pthread_self());
+    /* There is minor design flaw in our implementation. Not actually flaw, but
+    a room to mis-use the rw_locks which is a trade off for simplicity. Here Simplicity is
+    that rw_lock implementation do not keep track of "who" all reader threads have
+    obtain the read lock on rw_lock. Here is an example, how rw_lock implementation
+    could be erroneously used by the developer, yet rw_lock implementation would not
+    report a bug ( assert () ).
+    Suppose, threads T1, T2 and T3 owns read locks on rw_lock. and Now, some
+    Thread T4 which do not own any type of lock on rw_lock invoke rw_lock_unlock( )
+    API. The API would still honor the unlock request, since our rw_lock do not keep
+    track of who all "reader" threads owns the rw_lock and treat T4 as some reader thread
+    tryint to unlock the rw_lock*/
 
-            rw_lock->is_locked_by_writer = false;
-            rw_lock->writer_thread =0;
+    else if (rw_lock->is_locked_by_reader) {
 
-             /* Yes, it is possible we can have Readers Or Writers Waiting */
-            if (rw_lock->n_reader_waiting ||
-                 rw_lock->n_writer_waiting) {
+         assert(rw_lock->is_locked_by_writer == false);
+         assert(rw_lock->writer_thread == 0);
 
-                pthread_cond_broadcast(&rw_lock->cv);
-            }
-            pthread_mutex_unlock(&rw_lock->state_mutex);
-            return;
-        }
-        else {
-            /* Locked by neither Reader nor Writer */
-            assert(0);
-        }
+         rw_lock->n_locks--;
+
+         if (rw_lock->n_locks) {
+             pthread_mutex_unlock(&rw_lock->state_mutex);
+             return;
+         }
+
+         if (rw_lock->n_reader_waiting ||
+             rw_lock->n_writer_waiting) {
+
+             pthread_cond_broadcast(&rw_lock->cv);
+         }
+
+         rw_lock->is_locked_by_reader = false;
+         pthread_mutex_unlock(&rw_lock->state_mutex);
+         return;
+    }
+
+    assert(0);
 }
+
+
 
 void
 rw_lock_wr_lock (rw_lock_t *rw_lock) {
