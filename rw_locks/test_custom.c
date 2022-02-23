@@ -93,13 +93,15 @@ write_thread_fn (void *arg) {
 int
 main(int argc, char **argv) {
 
-    static pthread_t th1, th2, th3, th4;
+   static pthread_t th1, th2, th3, th4, th5, th6;
     rw_lock_init(&rw_lock);
     pthread_mutex_init (&state_check_mutex, NULL);
     pthread_create(&th1, NULL, read_thread_fn, NULL);
     pthread_create(&th2, NULL, read_thread_fn, NULL);
-    pthread_create(&th3, NULL, write_thread_fn, NULL);
+    pthread_create(&th3, NULL, read_thread_fn, NULL);
     pthread_create(&th4, NULL, write_thread_fn, NULL);
+    pthread_create(&th5, NULL, write_thread_fn, NULL);
+    pthread_create(&th6, NULL, write_thread_fn, NULL);
     pthread_exit(0);
     return 0;
 }
