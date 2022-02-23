@@ -74,11 +74,8 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
     rw_lock->n_locks--;
 
-    /* Lock is still locked by some reader thread */
+    /* Lock is still locked by some reader(s) Or Writer thread including recursive locking */
     if (rw_lock->n_locks > 0) {
-        assert(rw_lock->is_locked_by_reader);
-        assert(rw_lock->is_locked_by_writer == false);
-        assert(rw_lock->writer_thread == 0);
         pthread_mutex_unlock(&rw_lock->state_mutex);
         return;
     }
