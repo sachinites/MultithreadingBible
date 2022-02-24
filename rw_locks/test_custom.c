@@ -10,8 +10,9 @@ pthread_mutex_t state_check_mutex;
 
 
 static void
-assert_check() {
+cs_status_check() {
 
+    pthread_mutex_lock(&state_check_mutex);
     assert(n_r >= 0 && n_w >= 0); /* Cannot be negative */
 
     if (n_r >= 0 && n_w == 0) {
@@ -24,14 +25,21 @@ assert_check() {
         assert(0);
 
     printf ("n_r = %d, n_w = %d\n", n_r, n_w);
+    pthread_mutex_unlock(&state_check_mutex);
 }
+
+static void 
+execute_cs() {
+
+    cs_status_check();
+}
+
 
 static void
 reader_enter_cs () {
 
     pthread_mutex_lock(&state_check_mutex);
         n_r++;
-        assert_check();
     pthread_mutex_unlock(&state_check_mutex);
 }
 
@@ -40,26 +48,17 @@ reader_leave_cs () {
 
     pthread_mutex_lock(&state_check_mutex);
         n_r--;
-        assert_check();
     pthread_mutex_unlock(&state_check_mutex);
 }
 
 static void
 writer_enter_cs () {
-
-    pthread_mutex_lock(&state_check_mutex);
         n_w++;
-        assert_check();
-    pthread_mutex_unlock(&state_check_mutex);
 }
 
 static void
 writer_leave_cs () {
-
-    pthread_mutex_lock(&state_check_mutex);
         n_w--;
-        assert_check();
-    pthread_mutex_unlock(&state_check_mutex);
 }
 
 void *
@@ -69,7 +68,7 @@ read_thread_fn (void *arg) {
         rw_lock_rd_lock(&rw_lock);
         reader_enter_cs();
        
-       /* C.S */
+       execute_cs();
 
         reader_leave_cs();
         rw_lock_unlock(&rw_lock);
@@ -83,7 +82,7 @@ write_thread_fn (void *arg) {
         rw_lock_wr_lock(&rw_lock);
         writer_enter_cs();
         
-        /* C.S */
+       execute_cs();
 
         writer_leave_cs();
         rw_lock_unlock(&rw_lock);

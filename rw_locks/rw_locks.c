@@ -112,7 +112,7 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
     Thread T4 which do not own any type of lock on rw_lock invoke rw_lock_unlock( )
     API. The API would still honor the unlock request, since our rw_lock do not keep
     track of who all "reader" threads owns the rw_lock and treat T4 as some reader thread
-    tryint to unlock the rw_lock*/
+    trying to unlock the rw_lock*/
 
     else if (rw_lock->is_locked_by_reader) {
 
@@ -139,8 +139,6 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
     assert(0);
 }
-
-
 
 void
 rw_lock_wr_lock (rw_lock_t *rw_lock) {
