@@ -101,6 +101,7 @@ main(int argc, char **argv) {
    static pthread_t th1, th2, th3, th4, th5, th6;
     rw_lock_init(&rw_lock);
     rw_lock_set_max_readers_writers(&rw_lock, 3, 3);
+    rw_lock_set_biasedness(&rw_lock, RW_LOCK_BIASEDNESS_OPPOSITE);
     pthread_mutex_init (&state_check_mutex, NULL);
     pthread_create(&th1, NULL, read_thread_fn, NULL);
     pthread_create(&th2, NULL, read_thread_fn, NULL);

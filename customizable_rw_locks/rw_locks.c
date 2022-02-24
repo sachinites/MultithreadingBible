@@ -15,6 +15,7 @@ rw_lock_init (rw_lock_t *rw_lock) {
     rw_lock->n_max_readers = RW_LOCK_MAX_READER_THREADS_DEF;
     rw_lock->n_max_writers = RW_LOCK_MAX_WRITER_THREADS_DEF;
     rw_lock->biasedness = RW_LOCK_BIASEDNESS_DEF;
+    rw_lock->who_used_cs = true;
 }
 
 /* Assumes state mutex is already locked */
@@ -140,13 +141,25 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
 
     pthread_mutex_lock(&rw_lock->state_mutex);
 
+    EVALUATE_ALL_CONDNS_AGAIN2:
+
     while (rw_lock->is_locked_by_writer ||
                rw_lock->n_locks == rw_lock->n_max_readers) {
 
         rw_lock_block_reader_thread(rw_lock);
     }
 
+    while (rw_lock->n_locks == 0 &&
+                rw_lock->n_writer_waiting &&
+                rw_lock->biasedness == RW_LOCK_BIASEDNESS_OPPOSITE &&
+                rw_lock_was_cs_used_by_reader_last_time(rw_lock)) {
+    
+            rw_lock_block_reader_thread(rw_lock);
+            goto EVALUATE_ALL_CONDNS_AGAIN2;
+    }
+
     if (rw_lock->n_locks == 0) {
+        
         /* First Reader thread Enter C.S */
         rw_lock->is_locked_by_reader = true;
     }
@@ -159,11 +172,23 @@ rw_lock_wr_lock (rw_lock_t *rw_lock) {
 
     pthread_mutex_lock(&rw_lock->state_mutex);
 
-    while (rw_lock->is_locked_by_reader ||
-               rw_lock->n_locks == rw_lock->n_max_writers) {
+    EVALUATE_ALL_CONDNS_AGAIN1:
 
-        rw_lock_block_writer_thread(rw_lock);
-    }
+        while (rw_lock->is_locked_by_reader ||
+               rw_lock->n_locks == rw_lock->n_max_writers)
+        {
+            rw_lock_block_writer_thread(rw_lock);
+        }
+
+        while (rw_lock->n_locks == 0 &&
+               rw_lock->n_reader_waiting &&
+               rw_lock->biasedness == RW_LOCK_BIASEDNESS_OPPOSITE &&
+               rw_lock_was_cs_used_by_writer_last_time(rw_lock))
+        {
+            rw_lock_block_writer_thread(rw_lock);
+            goto EVALUATE_ALL_CONDNS_AGAIN1;
+        }
+
 
     if (rw_lock->n_locks == 0) {
         /* First Writer thread Enter C.S */
@@ -189,6 +214,7 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
             /* Last Writer has moved out of C.S*/
             rw_lock->is_locked_by_writer = false;
+            rw_lock->who_used_cs = false;
             rw_lock_signal(rw_lock, true, false);
         }
         else {
@@ -210,6 +236,7 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
             /* Last reader has moved out of C.S*/
             rw_lock->is_locked_by_reader = false;
+             rw_lock->who_used_cs = true;
             rw_lock_signal(rw_lock, true, true);
         }
         else {

@@ -41,7 +41,22 @@ typedef struct rwlock_ {
     uint16_t n_max_writers;
     /* Biasedness property */
     uint8_t biasedness;
+    /* Who used C.S last time, true for readers, false for writers. default is true */
+    bool who_used_cs;
 }rw_lock_t;
+
+static inline bool
+rw_lock_was_cs_used_by_reader_last_time (rw_lock_t *rw_lock) {
+
+    return (rw_lock->who_used_cs);
+}
+
+static inline bool
+rw_lock_was_cs_used_by_writer_last_time (rw_lock_t *rw_lock) {
+
+    return !rw_lock->who_used_cs;
+}
+
 
 void
 rw_lock_init (rw_lock_t *rw_lock);
