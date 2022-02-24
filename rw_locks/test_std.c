@@ -14,10 +14,13 @@ cs_status_check() {
     pthread_mutex_lock(&state_check_mutex);
     assert(n_r >= 0 && n_w >= 0); /* Cannot be negative */
 
-    if (n_r >= 0 && n_w == 0) {
+    if (n_r == 0 && n_w == 0) {
         // valid condition
     }
-    else if (n_r == 0 && n_w >= 0) {
+    else if (n_r > 0 && n_w == 0) {
+        // valid condition
+    }
+    else if (n_r == 0 && n_w == 1) {
         // valid condition
     }
     else 
@@ -67,7 +70,7 @@ read_thread_fn (void *arg) {
         pthread_rwlock_rdlock(&rw_lock);
         reader_enter_cs();
        
-       execute_cs();
+        execute_cs();
 
         reader_leave_cs();
         pthread_rwlock_unlock(&rw_lock);
