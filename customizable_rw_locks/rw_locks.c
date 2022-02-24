@@ -61,7 +61,8 @@ rw_lock_block_writer_thread(rw_lock_t *rw_lock) {
 }
 
 static void
-rw_lock_broadcast(rw_lock_t *rw_lock, bool broadcast) {
+rw_lock_signal(rw_lock_t *rw_lock, bool broadcast,
+                                bool exit_thread_is_reader) {
 
     if (rw_lock->n_reader_waiting == 0 &&
         rw_lock->n_writer_waiting == 0) {
@@ -91,6 +92,42 @@ rw_lock_broadcast(rw_lock_t *rw_lock, bool broadcast) {
             else {
                 if (broadcast) pthread_cond_broadcast(&rw_lock->cv_readers);
                 else pthread_cond_signal(&rw_lock->cv_readers);
+            }
+            break;
+        case RW_LOCK_BIASEDNESS_OPPOSITE:
+            if (exit_thread_is_reader)
+            {
+                if (rw_lock->n_writer_waiting)
+                {
+                    if (broadcast)
+                        pthread_cond_broadcast(&rw_lock->cv_writers);
+                    else
+                        pthread_cond_signal(&rw_lock->cv_writers);
+                }
+                else
+                {
+                    if (broadcast)
+                        pthread_cond_broadcast(&rw_lock->cv_readers);
+                    else
+                        pthread_cond_signal(&rw_lock->cv_readers);
+                }
+            }
+            else
+            {
+                if (rw_lock->n_reader_waiting)
+                {
+                    if (broadcast)
+                        pthread_cond_broadcast(&rw_lock->cv_readers);
+                    else
+                        pthread_cond_signal(&rw_lock->cv_readers);
+                }
+                else
+                {
+                    if (broadcast)
+                        pthread_cond_broadcast(&rw_lock->cv_writers);
+                    else
+                        pthread_cond_signal(&rw_lock->cv_readers);
+                }
             }
             break;
         default :
@@ -152,13 +189,13 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
             /* Last Writer has moved out of C.S*/
             rw_lock->is_locked_by_writer = false;
-            rw_lock_broadcast(rw_lock, true);
+            rw_lock_signal(rw_lock, true, false);
         }
         else {
             /* only one writer thread as moved out of C.S*/
             if (rw_lock->n_writer_waiting) {
                 if (rw_lock->biasedness == RW_LOCK_BIASEDNESS_NEUTRAL) {
-                     rw_lock_broadcast(rw_lock, true);
+                     rw_lock_signal(rw_lock, true, false);
                 }
                 else {
                     pthread_cond_signal(&rw_lock->cv_writers);
@@ -173,13 +210,13 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 
             /* Last reader has moved out of C.S*/
             rw_lock->is_locked_by_reader = false;
-            rw_lock_broadcast(rw_lock, true);
+            rw_lock_signal(rw_lock, true, true);
         }
         else {
             /* only one reader thread has moved out of C.S*/
             if (rw_lock->n_reader_waiting) {
                 if (rw_lock->biasedness == RW_LOCK_BIASEDNESS_NEUTRAL) {
-                    rw_lock_broadcast(rw_lock, true);
+                    rw_lock_signal(rw_lock, true, true);
                 }
                 else {
                     pthread_cond_signal(&rw_lock->cv_readers);
