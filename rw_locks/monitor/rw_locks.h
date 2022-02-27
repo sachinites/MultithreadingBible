@@ -13,9 +13,10 @@ typedef struct rwlock_ {
     /* A Mutex to manipulate/inspect the state of rwlock 
     in a mutually exclusive way */
     pthread_mutex_t state_mutex;
-    /* A CV to block the the threads when the lock is not
-    available */
-    pthread_cond_t cv;
+    /* A CV to block the reader threads when the lock is not  available */
+    pthread_cond_t cv_reader;
+     /* A CV to block the writer threads when the lock is not  available */
+    pthread_cond_t cv_writer;
     /* Count of number of concurrent threads executing inside C.S. */
     uint16_t n_locks;
     /* No of reader threads waiting for the lock grant*/
