@@ -5,7 +5,8 @@ void
 rw_lock_init (rw_lock_t *rw_lock) {
 
     pthread_mutex_init(&rw_lock->state_mutex, NULL);
-    pthread_cond_init(&rw_lock->cv, NULL);
+    pthread_cond_init(&rw_lock->cv_reader, NULL);
+    pthread_cond_init(&rw_lock->cv_writer, NULL);
     rw_lock->n_reader_waiting = 0;
     rw_lock->n_writer_waiting = 0;
     rw_lock->is_locked_by_reader = false;
@@ -38,7 +39,7 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
                 rw_lock->n_locks == rw_lock->n_max_readers) {
 
           rw_lock->n_reader_waiting++;
-          pthread_cond_wait(&rw_lock->cv, &rw_lock->state_mutex);
+          pthread_cond_wait(&rw_lock->cv_reader, &rw_lock->state_mutex);
           rw_lock->n_reader_waiting--;
      }
 
@@ -75,7 +76,7 @@ rw_lock_wr_lock (rw_lock_t *rw_lock) {
                 rw_lock->n_locks == rw_lock->n_max_writers) {
 
           rw_lock->n_writer_waiting++;
-          pthread_cond_wait(&rw_lock->cv, &rw_lock->state_mutex);
+          pthread_cond_wait(&rw_lock->cv_writer, &rw_lock->state_mutex);
           rw_lock->n_writer_waiting--;
      }
 
@@ -104,14 +105,19 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
         rw_lock->n_locks--;
         
         if (rw_lock->n_locks) {
+            /* Replacement Property */
+            if (rw_lock->n_writer_waiting) {
+                pthread_cond_signal(&rw_lock->cv_writer);
+            }
              pthread_mutex_unlock(&rw_lock->state_mutex);
              return;
         }
 
-        if (rw_lock->n_reader_waiting ||
-            rw_lock->n_writer_waiting) {
-
-            pthread_cond_broadcast(&rw_lock->cv);
+        if (rw_lock->n_reader_waiting ) {
+            pthread_cond_broadcast(&rw_lock->cv_reader);
+        }
+        else if (rw_lock->n_writer_waiting) {
+            pthread_cond_broadcast(&rw_lock->cv_writer);
         }
 
         rw_lock->is_locked_by_writer = false;
@@ -128,14 +134,19 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
          rw_lock->n_locks--;
 
          if (rw_lock->n_locks) {
+             /* Replacement Property */
+            if (rw_lock->n_reader_waiting) {
+                pthread_cond_signal(&rw_lock->cv_reader);
+            }
              pthread_mutex_unlock(&rw_lock->state_mutex);
              return;
          }
 
-         if (rw_lock->n_reader_waiting ||
-             rw_lock->n_writer_waiting) {
-
-             pthread_cond_broadcast(&rw_lock->cv);
+         if (rw_lock->n_writer_waiting ) {
+             pthread_cond_broadcast(&rw_lock->cv_writer);
+         }
+         else if (rw_lock->n_reader_waiting ) {
+             pthread_cond_broadcast(&rw_lock->cv_reader);
          }
 
          rw_lock->is_locked_by_reader = false;
@@ -155,7 +166,9 @@ rw_lock_destroy(rw_lock_t *rw_lock) {
     assert(rw_lock->is_locked_by_writer == false);
     assert(rw_lock->is_locked_by_reader == false);
     pthread_mutex_destroy(&rw_lock->state_mutex);
-    pthread_cond_destroy(&rw_lock->cv);
+    pthread_cond_destroy(&rw_lock->cv_reader);
+    pthread_cond_destroy(&rw_lock->cv_writer);
+
 }
 
 void
