@@ -10,6 +10,8 @@ rw_lock_init (rw_lock_t *rw_lock) {
     rw_lock->n_writer_waiting = 0;
     rw_lock->is_locked_by_reader = false;
     rw_lock->is_locked_by_writer = false;
+    rw_lock->n_max_readers = RW_LOCK_MAX_READER_THREADS_DEF;
+    rw_lock->n_max_writers = RW_LOCK_MAX_WRITER_THREADS_DEF;
 }
 
 void
@@ -19,7 +21,8 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
 
     /* Case 1 : rw_lock is Unlocked */
     if (rw_lock->is_locked_by_reader == false &&
-         rw_lock->is_locked_by_writer == false) {
+         rw_lock->is_locked_by_writer == false &&
+         rw_lock->n_max_readers >= 1) {
 
         assert(rw_lock->n_locks == 0);
         assert(!rw_lock->is_locked_by_reader);
@@ -30,21 +33,10 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
         return;
     }
 
-    /* Case 2 : rw_lock is locked by reader(s) thread already ( could be same as this thread (recursive)) */
-    if (rw_lock->is_locked_by_reader) {
-        
-        assert(rw_lock->is_locked_by_writer == false);
-        assert(rw_lock->n_locks);
-        rw_lock->n_locks++;
-        pthread_mutex_unlock(&rw_lock->state_mutex);
-        return;
-    }
+    /* Case 2 and 3 : rw_lock is locked by a writer thread Or lock is exhausted*/
+     while (rw_lock->is_locked_by_writer ||
+                rw_lock->n_locks == rw_lock->n_max_readers) {
 
-    /* Case 3 : rw_lock is locked by a writer thread*/
-     while (rw_lock->is_locked_by_writer) {
-
-          assert(rw_lock->n_locks);
-          assert(rw_lock->is_locked_by_reader == false);
           rw_lock->n_reader_waiting++;
           pthread_cond_wait(&rw_lock->cv, &rw_lock->state_mutex);
           rw_lock->n_reader_waiting--;
@@ -56,6 +48,43 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
     }
      rw_lock->n_locks++;
      assert (rw_lock->is_locked_by_writer == false);
+     pthread_mutex_unlock(&rw_lock->state_mutex);
+}
+
+void
+rw_lock_wr_lock (rw_lock_t *rw_lock) {
+
+    pthread_mutex_lock(&rw_lock->state_mutex);
+
+    /* Case 1 : rw_lock is Unlocked */
+    if (rw_lock->is_locked_by_reader == false &&
+          rw_lock->is_locked_by_writer == false &&
+          rw_lock->n_max_writers >= 1) {
+
+        assert(rw_lock->n_locks == 0);
+        assert(!rw_lock->is_locked_by_reader);
+        assert(!rw_lock->is_locked_by_writer);
+        rw_lock->n_locks++;
+        rw_lock->is_locked_by_writer = true;
+        pthread_mutex_unlock(&rw_lock->state_mutex);
+        return;
+    }
+
+    /* Case 2 and 3 : rw_lock is locked by a reader thread Or lock is exhausted*/
+     while (rw_lock->is_locked_by_reader ||
+                rw_lock->n_locks == rw_lock->n_max_writers) {
+
+          rw_lock->n_writer_waiting++;
+          pthread_cond_wait(&rw_lock->cv, &rw_lock->state_mutex);
+          rw_lock->n_writer_waiting--;
+     }
+
+    if (rw_lock->n_locks == 0) {
+        /* First reader enter C.S */
+        rw_lock->is_locked_by_writer = true;
+    }
+     rw_lock->n_locks++;
+     assert (rw_lock->is_locked_by_reader == false);
      pthread_mutex_unlock(&rw_lock->state_mutex);
 }
 
@@ -118,53 +147,6 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
 }
 
 void
-rw_lock_wr_lock (rw_lock_t *rw_lock) {
-
-    pthread_mutex_lock(&rw_lock->state_mutex);
-
-    /* Case 1 : rw_lock is Unlocked */
-    if (rw_lock->is_locked_by_reader == false &&
-          rw_lock->is_locked_by_writer == false) {
-
-        assert(rw_lock->n_locks == 0);
-        assert(!rw_lock->is_locked_by_reader);
-        assert(!rw_lock->is_locked_by_writer);
-        rw_lock->n_locks++;
-        rw_lock->is_locked_by_writer = true;
-        pthread_mutex_unlock(&rw_lock->state_mutex);
-        return;
-    }
-
-    /* Case 2 : rw_lock is locked by writer(s) thread already ( could be same as this thread (recursive)) */
-    if (rw_lock->is_locked_by_writer) {
-        
-        assert(rw_lock->is_locked_by_reader == false);
-        assert(rw_lock->n_locks);
-        rw_lock->n_locks++;
-        pthread_mutex_unlock(&rw_lock->state_mutex);
-        return;
-    }
-
-    /* Case 3 : rw_lock is locked by a writer thread*/
-     while (rw_lock->is_locked_by_reader) {
-
-          assert(rw_lock->n_locks);
-          assert(rw_lock->is_locked_by_writer == false);
-          rw_lock->n_writer_waiting++;
-          pthread_cond_wait(&rw_lock->cv, &rw_lock->state_mutex);
-          rw_lock->n_writer_waiting--;
-     }
-
-    if (rw_lock->n_locks == 0) {
-        /* First reader enter C.S */
-        rw_lock->is_locked_by_writer = true;
-    }
-     rw_lock->n_locks++;
-     assert (rw_lock->is_locked_by_reader == false);
-     pthread_mutex_unlock(&rw_lock->state_mutex);
-}
-
-void
 rw_lock_destroy(rw_lock_t *rw_lock) {
 
     assert(rw_lock->n_locks == 0);
@@ -174,4 +156,12 @@ rw_lock_destroy(rw_lock_t *rw_lock) {
     assert(rw_lock->is_locked_by_reader == false);
     pthread_mutex_destroy(&rw_lock->state_mutex);
     pthread_cond_destroy(&rw_lock->cv);
+}
+
+void
+rw_lock_set_max_readers_writers(rw_lock_t *rw_lock,
+                                                        uint16_t max_readers, uint16_t max_writers) {
+
+    rw_lock->n_max_readers = max_readers;
+    rw_lock->n_max_writers = max_writers;
 }
