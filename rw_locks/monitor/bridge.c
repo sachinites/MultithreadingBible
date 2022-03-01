@@ -3,77 +3,109 @@
 #include <assert.h>
 #include "rw_locks.h"
 
-static rw_lock_t rw_lock;
-static int n_r =  0;
-static int n_w = 0;
-pthread_mutex_t state_check_mutex;
+typedef struct rwlock_ monitor_t;
 
+typedef struct bridge_ {
+
+    /* Extra mutex to update the bridge state, since bridge will be accessed
+    by multiple vehicles (threads) concurrently*/
+    pthread_mutex_t bridge_check_mutex;
+    /* No of Vehicles on the bridge moving from Left to Right */
+    int n_LR;
+    /* No of Vehicles on the bridge moving from Right to Left */
+    int n_RL;
+    /* Every Resource (bridge) must have its personal Monitor to provide thread
+    safe access */
+    monitor_t bridge_monitor;
+} bridge_t;
+
+static bridge_t bridge = {PTHREAD_MUTEX_INITIALIZER, 0, 0};
+
+typedef enum vehicle_type_{
+
+    LR, /* Moving from Left to Right */
+    RL  /* Moving from Right to Left */
+} vehicle_type_t;
+
+/* Let us print the bridge state, and assert if bridge is accessed against the rules */
 static void
-bridge_enter_request_LR_vehicle(rw_lock_t *rw_lock) {
+bridge_access(bridge_t  *bridge) {
 
-    rw_lock_rd_lock(rw_lock);
-    pthread_mutex_lock(&state_check_mutex);
-    n_r++;
-    pthread_mutex_unlock(&state_check_mutex);
-}
+    pthread_mutex_lock(&bridge->bridge_check_mutex);
+    
+    assert(bridge->n_LR >= 0 && bridge->n_RL >= 0); /* Cannot be negative */
 
-static void
-bridge_enter_request_RL_vehicle(rw_lock_t *rw_lock) {
-
-    rw_lock_wr_lock(rw_lock);
-    pthread_mutex_lock(&state_check_mutex);
-    n_w++;
-    pthread_mutex_unlock(&state_check_mutex);
-}
-
-static void
-bridge_leave_LR_vehicle(rw_lock_t *rw_lock) {
-
-    pthread_mutex_lock(&state_check_mutex);
-    n_r--;
-    pthread_mutex_unlock(&state_check_mutex);
-    rw_lock_unlock(rw_lock);
-}
-
-static void
-bridge_leave_RL_vehicle(rw_lock_t *rw_lock) {
-
-    pthread_mutex_lock(&state_check_mutex);
-    n_w--;
-    pthread_mutex_unlock(&state_check_mutex);
-    rw_lock_unlock(rw_lock);
-}
-
-static void
-bridge_snapshot(rw_lock_t *rw_lock) {
-
-    pthread_mutex_lock(&state_check_mutex);
-    assert(n_r >= 0 && n_w >= 0); /* Cannot be negative */
-
-    if (n_r == 0 && n_w <= rw_lock->n_max_writers) {
+    if (bridge->n_LR == 0 && 
+        (bridge->n_RL <= bridge->bridge_monitor.n_max_writers)) {
         // valid condition
     }
-    else if (n_r <= rw_lock->n_max_readers && n_w == 0) {
+    else if ((bridge->n_LR <= bridge->bridge_monitor.n_max_readers) && 
+                bridge->n_RL == 0) {
         // valid condition
     }
     else {
-        printf ("n_r = %d, n_w = %d\n", n_r, n_w);
+        printf ("n_LR = %d, n_RL = %d\n", bridge->n_LR, bridge->n_RL);
         assert(0);
     }
 
-    printf ("n_r = %d, n_w = %d\n", n_r, n_w);
-    pthread_mutex_unlock(&state_check_mutex);
+    printf ("n_LR = %d, n_RL = %d\n", bridge->n_LR, bridge->n_RL);
+    pthread_mutex_unlock(&bridge->bridge_check_mutex);
+}
+
+
+static void
+ArriveBridge(bridge_t *bridge, vehicle_type_t vehicle) {
+
+    switch (vehicle)
+    {
+    case LR:
+        rw_lock_rd_lock(&bridge->bridge_monitor);
+        pthread_mutex_lock(&bridge->bridge_check_mutex);
+        bridge->n_LR++;
+        pthread_mutex_unlock(&bridge->bridge_check_mutex);
+        break;
+    case RL:
+        rw_lock_wr_lock(&bridge->bridge_monitor);
+        pthread_mutex_lock(&bridge->bridge_check_mutex);
+        bridge->n_RL++;
+        pthread_mutex_unlock(&bridge->bridge_check_mutex);
+        break;
+    default:
+        assert(0);
+    }
+}
+
+static void
+ExitBridge(bridge_t *bridge, vehicle_type_t vehicle) {
+
+    switch (vehicle)
+    {
+    case LR:
+        pthread_mutex_lock(&bridge->bridge_check_mutex);
+        bridge->n_LR--;
+        pthread_mutex_unlock(&bridge->bridge_check_mutex);
+        rw_lock_unlock(&bridge->bridge_monitor);
+        break;
+    case RL:
+        pthread_mutex_lock(&bridge->bridge_check_mutex);
+        bridge->n_RL--;
+        pthread_mutex_unlock(&bridge->bridge_check_mutex);
+        rw_lock_unlock(&bridge->bridge_monitor);
+        break;
+    default:
+        assert(0);
+    }
 }
 
 void *
 LR_thread_fn (void *arg) {
 
     while(1) {
-        bridge_enter_request_LR_vehicle(&rw_lock);
+         ArriveBridge(&bridge, LR);
         
-        bridge_snapshot(&rw_lock);
+         bridge_access(&bridge);
 
-        bridge_leave_LR_vehicle(&rw_lock);
+         ExitBridge(&bridge, LR);
     }
 }
 
@@ -81,21 +113,20 @@ void *
 RL_thread_fn (void *arg) {
 
     while(1) {
-         bridge_enter_request_RL_vehicle(&rw_lock);
+        ArriveBridge(&bridge, RL);
         
-        bridge_snapshot(&rw_lock);
+        bridge_access(&bridge);
 
-        bridge_leave_RL_vehicle(&rw_lock);
+        ExitBridge(&bridge, RL);
     }
 }
 
 int
 main(int argc, char **argv) {
 
-   static pthread_t th1, th2, th3, th4, th5, th6;
-    rw_lock_init(&rw_lock);
-    rw_lock_set_max_readers_writers(&rw_lock, 3, 3);
-    pthread_mutex_init (&state_check_mutex, NULL);
+    static pthread_t th1, th2, th3, th4, th5, th6;
+    rw_lock_init(&bridge.bridge_monitor);
+    rw_lock_set_max_readers_writers(&bridge.bridge_monitor, 3, 3);
     pthread_create(&th1, NULL, LR_thread_fn, NULL);
     pthread_create(&th2, NULL, LR_thread_fn, NULL);
     pthread_create(&th3, NULL, LR_thread_fn, NULL);
