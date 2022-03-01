@@ -17,6 +17,8 @@ typedef struct rwlock_ {
     pthread_cond_t cv_reader;
      /* A CV to block the writer threads when the lock is not  available */
     pthread_cond_t cv_writer;
+    bool dont_allow_readers;
+    bool dont_allow_writers;
     /* Count of number of concurrent threads executing inside C.S. */
     uint16_t n_locks;
     /* No of reader threads waiting for the lock grant*/
