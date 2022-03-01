@@ -50,7 +50,6 @@ rw_lock_rd_lock (rw_lock_t *rw_lock) {
     if (rw_lock->n_locks == 0) {
         /* First reader enter C.S */
         rw_lock->is_locked_by_reader = true;
-        rw_lock->dont_allow_writers = false;
     }
      rw_lock->n_locks++;
      assert (rw_lock->is_locked_by_writer == false);
@@ -90,7 +89,6 @@ rw_lock_wr_lock (rw_lock_t *rw_lock) {
     if (rw_lock->n_locks == 0) {
         /* First writer enter C.S */
         rw_lock->is_locked_by_writer = true;
-        rw_lock->dont_allow_readers = false;
     }
      rw_lock->n_locks++;
      assert (rw_lock->is_locked_by_reader == false);
