@@ -82,15 +82,15 @@ ExitBridge(bridge_t *bridge, vehicle_type_t vehicle) {
     {
     case LR:
         pthread_mutex_lock(&bridge->bridge_check_mutex);
+        rw_lock_unlock(&bridge->bridge_monitor);
         bridge->n_LR--;
         pthread_mutex_unlock(&bridge->bridge_check_mutex);
-        rw_lock_unlock(&bridge->bridge_monitor);
         break;
     case RL:
         pthread_mutex_lock(&bridge->bridge_check_mutex);
+        rw_lock_unlock(&bridge->bridge_monitor);
         bridge->n_RL--;
         pthread_mutex_unlock(&bridge->bridge_check_mutex);
-        rw_lock_unlock(&bridge->bridge_monitor);
         break;
     default:
         assert(0);
@@ -126,7 +126,7 @@ main(int argc, char **argv) {
 
     static pthread_t th1, th2, th3, th4, th5, th6;
     rw_lock_init(&bridge.bridge_monitor);
-    rw_lock_set_max_readers_writers(&bridge.bridge_monitor, 3, 3);
+    rw_lock_set_max_readers_writers(&bridge.bridge_monitor, 1, 1);
     pthread_create(&th1, NULL, LR_thread_fn, NULL);
     pthread_create(&th2, NULL, LR_thread_fn, NULL);
     pthread_create(&th3, NULL, LR_thread_fn, NULL);

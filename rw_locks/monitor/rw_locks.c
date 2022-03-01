@@ -126,6 +126,16 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
         }
         else if (rw_lock->n_writer_waiting) {
             pthread_cond_broadcast(&rw_lock->cv_writer);
+            /* If there is no reader thread waiting, then leave it to the 
+            competition between Writer & Reader threads, whoever make it
+            to CS first */
+            rw_lock->dont_allow_readers = false;
+        }
+        else {
+            /* If there is no reader OR writer thread waiting, then leave it to the 
+            competition between Writer & Reader threads, whoever make it
+            to CS first */
+            rw_lock->dont_allow_readers = false;
         }
 
         rw_lock->is_locked_by_writer = false;
@@ -153,10 +163,20 @@ rw_lock_unlock (rw_lock_t *rw_lock) {
          if (rw_lock->n_writer_waiting ) {
              pthread_cond_broadcast(&rw_lock->cv_writer);
              rw_lock->dont_allow_writers = false;
-            rw_lock->dont_allow_readers = true;
+             rw_lock->dont_allow_readers = true;
          }
          else if (rw_lock->n_reader_waiting ) {
              pthread_cond_broadcast(&rw_lock->cv_reader);
+            /* If there is no writer thread waiting, then leave it to the 
+            competition between Writer & Reader threads, whoever make it
+            to CS first */
+             rw_lock->dont_allow_writers = false;
+         }
+         else {
+             /* If there is no reader OR writer thread waiting, then leave it to the 
+            competition between Writer & Reader threads, whoever make it
+            to CS first */
+             rw_lock->dont_allow_writers = false;
          }
 
          rw_lock->is_locked_by_reader = false;
@@ -178,12 +198,12 @@ rw_lock_destroy(rw_lock_t *rw_lock) {
     pthread_mutex_destroy(&rw_lock->state_mutex);
     pthread_cond_destroy(&rw_lock->cv_reader);
     pthread_cond_destroy(&rw_lock->cv_writer);
-
 }
 
 void
 rw_lock_set_max_readers_writers(rw_lock_t *rw_lock,
-                                                        uint16_t max_readers, uint16_t max_writers) {
+                                                        uint16_t max_readers,
+                                                        uint16_t max_writers) {
 
     rw_lock->n_max_readers = max_readers;
     rw_lock->n_max_writers = max_writers;
