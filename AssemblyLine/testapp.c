@@ -77,13 +77,13 @@ CarAssemblyOut(void *obj) {
 int
 main(int argc, char *argv) {
 
-    asl_t *asl = asl_create_new("Car Assembly Line", CarAssemblyOut, 1);
+    asl_t *asl = asl_create_new("Car Assembly Line", CarAssemblyOut);
 
-    asl_stage_t *add_wheel_stage = asl_create_new_stage(asl, "Add Wheels", Car_Add_Wheels);
-    asl_stage_t *add_paint_stage = asl_create_new_stage(asl, "Add Paint", Car_Add_Paint);
-    asl_stage_t *add_wind_shield_stage = asl_create_new_stage(asl, "Add Wind Shield", Car_Add_WindShield);
-    asl_stage_t *add_engine_stage = asl_create_new_stage(asl, "Add Engine", Car_Add_Engine);
-    asl_stage_t *add_testing_stage = asl_create_new_stage(asl, "Add Testing", Car_Testing_Done);
+    asl_stage_t *add_wheel_stage = asl_create_new_stage(asl, "Add Wheels", Car_Add_Wheels, 1);
+    asl_stage_t *add_paint_stage = asl_create_new_stage(asl, "Add Paint", Car_Add_Paint, 1);
+    asl_stage_t *add_wind_shield_stage = asl_create_new_stage(asl, "Add Wind Shield", Car_Add_WindShield, 1);
+    asl_stage_t *add_engine_stage = asl_create_new_stage(asl, "Add Engine", Car_Add_Engine, 1);
+    asl_stage_t *add_testing_stage = asl_create_new_stage(asl, "Add Testing", Car_Testing_Done, 1);
 
     asl_add_root_stage(asl, add_wheel_stage);
     asl_add_child_stage(asl, add_wheel_stage, add_wind_shield_stage);
@@ -91,10 +91,17 @@ main(int argc, char *argv) {
     asl_add_child_stage(asl, add_paint_stage, add_engine_stage);
     asl_add_child_stage(asl, add_engine_stage, add_testing_stage);
 
-    Car_t *car = (Car_t *)calloc(1, sizeof(Car_t));
-    car->flags = 0;
+    Car_t *car1 = (Car_t *)calloc(1, sizeof(Car_t));
+    car1->flags = 0;
+    Car_t *car2 = (Car_t *)calloc(1, sizeof(Car_t));
+    car2->flags = 0;
+    Car_t *car3 = (Car_t *)calloc(1, sizeof(Car_t));
+    car3->flags = 0;
 
-    asl_enqueue(asl, (void *)car);
+    asl_enqueue(asl, (void *)car1);
+    asl_enqueue(asl, (void *)car2);
+    asl_enqueue(asl, (void *)car3);
+    asl_destroy(asl);
     pthread_exit(0);
     return 0;
 }
