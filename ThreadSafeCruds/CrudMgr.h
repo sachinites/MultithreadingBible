@@ -104,6 +104,36 @@ crud_node_index_to_crud_node_state (uint16_t index) {
     return crud_node_no_op;
 }
 
+static inline const char *
+crud_node_state_str (crud_node_state_t state) {
+
+    switch(state) {
+        case crud_node_pending_read:
+            return "crud_node_pending_read";
+        case crud_node_read_in_progress:
+            return "crud_node_read_in_progress";
+        case crud_node_pending_write:
+            return "crud_node_pending_write";
+        case crud_node_write_in_progress:   
+            return "crud_node_write_in_progress";
+        case crud_node_pending_delete:
+            return "crud_node_pending_delete";
+        case  crud_node_delete_in_progress:
+            return  "crud_node_delete_in_progress";
+        case crud_node_pending_create:
+            return "crud_node_pending_create";
+        case crud_node_create_in_progress:
+            return "crud_node_create_in_progress";
+        case crud_node_no_op:
+            return "crud_node_no_op";
+        default: ;
+            assert(0);
+    }
+    assert(0);
+    return NULL;    
+}
+
+
 
 /* This Data Structure has aggregate view of all thread activities going on 
     all nodes of the container object */
@@ -119,26 +149,18 @@ typedef struct crud_mgr_ {
 
 } crud_mgr_t;
 
-typedef struct crud_node_state_info_ {
-
-    uint8_t count;
-    glthread_t glue;
-} crud_node_state_info_t;
-GLTHREAD_TO_STRUCT(glue_to_crud_node_glue, crud_node_state_info_t, glue);
-
-
 typedef enum crud_op_type_ {
 
-    CRUD_OP_NONE,
-    CRUD_CREATE,
     CRUD_DELETE,
+    CRUD_CREATE,
     CRUD_READ,
-    CRUD_WRITE
+    CRUD_WRITE,
+    CRUD_OP_NONE
 } crud_op_type_t;
 
 typedef struct crud_node_ {
 
-      /* Mutex to update the crud node state in a mutually exclusive way */
+    /* Mutex to update the crud node state in a mutually exclusive way */
     pthread_mutex_t state_mutex;
 
     uint16_t id;
@@ -158,19 +180,20 @@ typedef struct crud_node_ {
 
     pthread_cond_t create_thread_cv;
 
-    crud_node_state_info_t crud_node_state_info[crud_node_no_op_index + 1];
+    uint8_t counter [crud_node_no_op_index + 1];
+   glthread_t crud_node_glue[crud_node_no_op_index + 1];
 
 } crud_node_t ;
 
 static inline crud_node_t *
-crud_node_get_from_crud_node_state_info(
-        crud_node_state_info_t *crud_node_state_info, int index) {
+crud_node_get_from_crud_node_glue (
+        glthread_t *glue, int index) {
 
-        crud_node_state_info_t *ptr = crud_node_state_info;
+        glthread_t *ptr = glue;
         ptr -= index;
 
         uint8_t *ptr2 = (uint8_t *)ptr;
-        ptr2 -= offsetof(crud_node_t , crud_node_state_info);
+        ptr2 -= offsetof(crud_node_t , crud_node_glue);
         return (crud_node_t *)ptr2;
 }
 
