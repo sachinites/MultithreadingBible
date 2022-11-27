@@ -3,15 +3,6 @@
 #include "refcount.h"
 #include "LinkedList/LinkedListApi.h"
 
-#define STUD_F_CREATED 1
-#define STUD_F_OUTER_LOCK 2
-#define STUD_F_INNER_LOCK 4
-#define STUD_F_DELETION_DEFERRED    8
-#define STUD_F_DELETED  16
-#define STUD_F_READ 32
-#define STUD_F_UPDATE 64
-
-
 typedef struct student_ {
 
     uint32_t roll_no;
