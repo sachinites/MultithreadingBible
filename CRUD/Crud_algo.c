@@ -68,19 +68,20 @@ reader_fn (void *arg) {
         /* Now perform Read operation */
         printf ("READ TH  ::  Roll No %u is READ, total marks = %u\n", roll_no, stud->total_marks);
 
+        /* Unlock the Student Object */
+        pthread_rwlock_unlock(&stud->rw_lock);
+
         /* Done using the object */
         if (thread_using_object_done (&stud->ref_count)) {
             printf ("READ TH  ::  Roll No %u READ Done\n",  roll_no);
-            pthread_rwlock_unlock(&stud->rw_lock);
             student_destroy (stud);
             printf ("READ TH :: Roll No %u destroyed\n", roll_no);
             continue;
         }
         else {
+            /* Never attempt to access stud object here or after this line in program*/
             printf ("READ TH  ::  Roll No %u READ Done\n", roll_no);
         }
-
-        pthread_rwlock_unlock (&stud->rw_lock);
     }
 
     return NULL;
@@ -125,19 +126,21 @@ update_fn (void *arg) {
         printf ("UPDATE TH  ::  Roll No %u , Increment %d, Marks Update %u --> %u\n",
             stud->roll_no, INCR, old_marks, stud->total_marks);
 
+        /* Unlock the Student Object */
+        pthread_rwlock_unlock(&stud->rw_lock);
+
         /* Done using the object */
         if (thread_using_object_done (&stud->ref_count)) {
             printf ("UPDATE TH  ::  Roll No %u UPDATE Done\n",  roll_no);
-            pthread_rwlock_unlock(&stud->rw_lock);
             student_destroy (stud);
             printf ("UPDATE TH :: Roll No %u destroyed\n", roll_no);
             continue;
         }
         else {
+             /* Never attempt to access stud object here or after this line in program*/
             printf ("UPDATE TH  ::  Roll No %u UPDATE Done\n",  roll_no);
         }
 
-        pthread_rwlock_unlock (&stud->rw_lock);
     }
 
     return NULL;
@@ -229,12 +232,6 @@ main (int argc, char **argv) {
     stud_lst.lst = init_singly_ll();
     pthread_rwlock_init(&stud_lst.rw_lock, NULL);
 
-#if 0
-    ref_count_init(&loop_count[READER_TH]);
-    ref_count_init(&loop_count[UPDATE_TH]);
-    ref_count_init(&loop_count[CREATE_TH]);
-    ref_count_init(&loop_count[DELETE_TH]);
-#endif
     loop_count[READER_TH] = 0;
     loop_count[UPDATE_TH] = 0;
     loop_count[CREATE_TH] = 0;
